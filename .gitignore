@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+data/__pycache__/
+
+# Node dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Generated output data
+DESTINATION/
+
+# Runtime scripts
+RUN/
+
+# Environment & Secrets
+.env
+
+# Runtime artifacts
+*.log
+*.pid
+.run_pids
+
+# PostgreSQL local data
+pgdata/
+
+# PM2 logs
+logs/
+
+# OS junk
+Thumbs.db
+.DS_Store

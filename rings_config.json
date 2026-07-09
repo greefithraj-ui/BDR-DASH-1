@@ -1,0 +1,900 @@
+{
+  "1": {
+    "serial_number": "RA-CH2-IR4-WB-RT09-0002386",
+    "ring_mac": "D5:F0:D6:09:45:4A",
+    "ring_name": "UH_D5F0D609454A",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "2": {
+    "serial_number": "RA-CH3-IR4-W1-RT08-0002440",
+    "ring_mac": "DC:55:B8:FE:A1:DD",
+    "ring_name": "UH_DC55B8FEA1DD",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "3": {
+    "serial_number": "RA-CH2-IR4-W1-RT07-0002427",
+    "ring_mac": "DF:5B:25:88:1D:21",
+    "ring_name": "UH_DF5B25881D21",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "4": {
+    "serial_number": "RA-CH2-IR4-WB-RT09-0002401",
+    "ring_mac": "C9:AC:57:78:47:B9",
+    "ring_name": "UH_C9AC577847B9",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {},
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "5": {
+    "serial_number": "RA-CH2-IR3-W1-RT08-0002531",
+    "ring_mac": "EF:A0:7B:03:D5:C2",
+    "ring_name": "UH_EFA07B03D5C2",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {},
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "6": {
+    "serial_number": "RA-CH2-IR3-WB-RT12-0002103",
+    "ring_mac": "DD:62:6A:D0:22:37",
+    "ring_name": "UH_DD626AD02237",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "7": {
+    "serial_number": "RA-CH2-IR3-WB-RT10-0002328",
+    "ring_mac": "FB:50:93:39:92:43",
+    "ring_name": "UH_FB5093399243",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "8": {
+    "serial_number": "RA-CH2-IR4-WB-RT10-0002256",
+    "ring_mac": "F2:05:18:6F:57:1A",
+    "ring_name": "UH_F205186F571A",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "9": {
+    "serial_number": "RA-CH2-IR4-WB-RT10-0002249",
+    "ring_mac": "CE:83:C8:06:5E:45",
+    "ring_name": "UH_CE83C8065E45",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "10": {
+    "serial_number": "RA-CH2-IR4-WB-RT10-0002252",
+    "ring_mac": "E1:EF:C1:AB:40:95",
+    "ring_name": "UH_E1EFC1AB4095",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 1
+  },
+  "11": {
+    "serial_number": "RA-CH2-IR4-W1-RT07-0002430",
+    "ring_mac": "FF:F7:3B:21:BD:E1",
+    "ring_name": "UH_FFF73B21BDE1",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "12": {
+    "serial_number": "RA-CH2-IR3-WB-RT10-0002348",
+    "ring_mac": "C7:7C:EE:A7:04:A1",
+    "ring_name": "UH_C77CEEA704A1",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {},
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "13": {
+    "serial_number": "RA-CH2-IR3-W1-RT08-0002526",
+    "ring_mac": "D9:28:EB:D7:5B:BF",
+    "ring_name": "UH_D928EBD75BBF",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "15": {
+    "serial_number": "RA-CH3-IR4-WB-RT09-0002156",
+    "ring_mac": "EB:91:2D:97:8A:E2",
+    "ring_name": "UH_EB912D978AE2",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "16": {
+    "serial_number": "RA-CH2-IR3-WB-RT12-0002104",
+    "ring_mac": "F2:59:44:AB:4F:AB",
+    "ring_name": "UH_F25944AB4FAB",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "17": {
+    "serial_number": "RA-CH2-IR4-WB-RT10-0002260",
+    "ring_mac": "C6:5C:B4:3B:2F:29",
+    "ring_name": "UH_C65CB43B2F29",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "19": {
+    "serial_number": "RA-CH2-IR4-W1-RT07-0002441",
+    "ring_mac": "C6:8A:98:68:B2:18",
+    "ring_name": "UH_C68A9868B218",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 1
+  },
+  "20": {
+    "serial_number": "RA-CH3-IR4-WB-RT12-0002090",
+    "ring_mac": "E9:BC:10:03:F4:18",
+    "ring_name": "UH_E9BC1003F418",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "21": {
+    "serial_number": "RA-CH3-IR4-W1-RT08-0002448",
+    "ring_mac": "D2:F7:02:6D:5B:CA",
+    "ring_name": "UH_D2F7026D5BCA",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "22": {
+    "serial_number": "RA-CH2-IR4-W1-RT08-0002526",
+    "ring_mac": "EB:72:26:69:C2:60",
+    "ring_name": "UH_EB722669C260",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {},
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "23": {
+    "serial_number": "RA-CH2-IR4-W1-RT07-0002453",
+    "ring_mac": "EE:10:2C:7D:65:D5",
+    "ring_name": "UH_EE102C7D65D5",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "24": {
+    "serial_number": "RA-CH2-IR3-WB-RT10-0002326",
+    "ring_mac": "E9:39:E6:FB:2B:0D",
+    "ring_name": "UH_E939E6FB2B0D",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "25": {
+    "serial_number": "RA-CH2-IR4-W1-RT08-0002536",
+    "ring_mac": "DA:30:8A:48:BE:0F",
+    "ring_name": "UH_DA308A48BE0F",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "27": {
+    "serial_number": "RA-CH2-IR3-WB-RT10-0002323",
+    "ring_mac": "F1:16:50:17:7E:E2",
+    "ring_name": "UH_F11650177EE2",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "28": {
+    "serial_number": "RA-CH2-IR4-WB-RT09-0002399",
+    "ring_mac": "EC:BC:6C:DA:E6:27",
+    "ring_name": "UH_ECBC6CDAE627",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "30": {
+    "serial_number": "RA-CH2-IR3-WB-RT10-0002322",
+    "ring_mac": "D3:60:B1:E9:E0:AE",
+    "ring_name": "UH_D360B1E9E0AE",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "31": {
+    "serial_number": "RA-CH2-IR4-WB-RT09-0002409",
+    "ring_mac": "EC:B1:6F:EF:B7:45",
+    "ring_name": "UH_ECB16FEFB745",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "32": {
+    "serial_number": "RA-CH2-IR4-W1-RT07-0002447",
+    "ring_mac": "F0:9E:FC:09:F7:7E",
+    "ring_name": "UH_F09EFC09F77E",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {},
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "33": {
+    "serial_number": "RA-CH2-IR4-WB-RT09-0002393",
+    "ring_mac": "DC:63:86:66:AB:B3",
+    "ring_name": "UH_DC638666ABB3",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "34": {
+    "serial_number": "RA-CH3-IR4-W1-RT06-0002153",
+    "ring_mac": "EE:A1:59:B5:14:88",
+    "ring_name": "UH_EEA159B51488",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "35": {
+    "serial_number": "RA-CH2-IR4-W1-RT06-0002466",
+    "ring_mac": "D7:6F:CB:A1:8D:D8",
+    "ring_name": "UH_D76FCBA18DD8",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "36": {
+    "serial_number": "RA-CH2-IR4-W1-RT06-0002461",
+    "ring_mac": "EA:0A:D6:CF:08:64",
+    "ring_name": "UH_EA0AD6CF0864",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "37": {
+    "serial_number": "RA-CH2-IR3-W1-RT06-0002208",
+    "ring_mac": "C8:B8:70:4C:D3:50",
+    "ring_name": "UH_C8B8704CD350",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "38": {
+    "serial_number": "RA-CH2-IR4-W1-RT08-0002508",
+    "ring_mac": "EC:96:02:C1:0B:07",
+    "ring_name": "UH_EC9602C10B07",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 12
+  },
+  "39": {
+    "serial_number": "RA-CH2-IR3-WB-RT11-0002195",
+    "ring_mac": "C4:F7:05:77:2C:39",
+    "ring_name": "UH_C4F705772C39",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "40": {
+    "serial_number": "RA-CH2-IR4-W1-RT06-0002448",
+    "ring_mac": "C8:50:86:C0:4B:55",
+    "ring_name": "UH_C85086C04B55",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 1
+  },
+  "41": {
+    "serial_number": "RA-CH2-IR4-W1-RT07-0002438",
+    "ring_mac": "E3:75:06:50:2C:CF",
+    "ring_name": "UH_E37506502CCF",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "42": {
+    "serial_number": "RA-CH3-IR4-WB-RT13-0002021",
+    "ring_mac": "E6:20:71:56:74:1C",
+    "ring_name": "UH_E6207156741C",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {},
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "43": {
+    "serial_number": "RA-CH3-IR4-WB-RT13-0002019",
+    "ring_mac": "F9:BF:EC:15:3C:4A",
+    "ring_name": "UH_F9BFEC153C4A",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "44": {
+    "serial_number": "RA-CH3-IR4-WB-RT13-0002017",
+    "ring_mac": "D3:16:D6:8B:6A:7B",
+    "ring_name": "UH_D316D68B6A7B",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "47": {
+    "serial_number": "RA-CH3-IR4-W1-RT08-0002379",
+    "ring_mac": "EE:FA:39:8D:CC:E9",
+    "ring_name": "UH_EEFA398DCCE9",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "48": {
+    "serial_number": "RA-CH2-IR4-W1-RT08-0002517",
+    "ring_mac": "CC:C6:D0:34:FC:B2",
+    "ring_name": "UH_CCC6D034FCB2",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "49": {
+    "serial_number": "RA-CH3-IR4-W1-RT08-0002413",
+    "ring_mac": "EA:35:48:C3:D5:D5",
+    "ring_name": "UH_EA3548C3D5D5",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 1
+  },
+  "50": {
+    "serial_number": "RA-CH3-IR4-W1-RT07-0002100",
+    "ring_mac": "E6:B6:1D:29:09:DB",
+    "ring_name": "UH_E6B61D2909DB",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 11
+  },
+  "51": {
+    "serial_number": "RA-CH3-IR4-WB-RT13-0002016",
+    "ring_mac": "CB:B8:D6:09:26:05",
+    "ring_name": "UH_CBB8D6092605",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "52": {
+    "serial_number": "RA-CH3-IR4-W1-RT08-0002367",
+    "ring_mac": "F6:55:A6:69:88:FA",
+    "ring_name": "UH_F655A66988FA",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 2
+  },
+  "53": {
+    "serial_number": "RA-CH3-IR4-WB-RT13-0002023",
+    "ring_mac": "C9:6B:D0:B7:98:47",
+    "ring_name": "UH_C96BD0B79847",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": "SUSPECTED",
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 2
+  },
+  "54": {
+    "serial_number": "RA-CH3-IR4-WB-RT10-0002061",
+    "ring_mac": "F3:5A:5D:56:28:27",
+    "ring_name": "UH_F35A5D562827",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "55": {
+    "serial_number": "RA-CH3-IR4-WB-RT13-0002022",
+    "ring_mac": "C8:E6:0F:6F:33:D0",
+    "ring_name": "UH_C8E60F6F33D0",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "56": {
+    "serial_number": "RA-CH3-IR4-WB-RT13-0002020",
+    "ring_mac": "FE:29:17:91:28:12",
+    "ring_name": "UH_FE2917912812",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 2
+  },
+  "57": {
+    "serial_number": "RA-CH3-IR4-WB-RT12-0002089",
+    "ring_mac": "DA:90:EB:EF:F6:55",
+    "ring_name": "UH_DA90EBEFF655",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "58": {
+    "serial_number": "RA-CH2-IR4-W1-RT07-0002396",
+    "ring_mac": "DB:43:96:48:15:D6",
+    "ring_name": "UH_DB43964815D6",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "59": {
+    "serial_number": "RA-CH3-IR4-WB-RT09-0002110",
+    "ring_mac": "DA:76:71:24:77:50",
+    "ring_name": "UH_DA7671247750",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {},
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "61": {
+    "serial_number": "RA-CH3-IR4-WB-RT13-0002018",
+    "ring_mac": "E9:9D:75:15:7A:BE",
+    "ring_name": "UH_E99D75157ABE",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "62": {
+    "serial_number": "RA-CH2-IR4-WB-RT09-0002394",
+    "ring_mac": "DE:1A:35:9D:52:C9",
+    "ring_name": "UH_DE1A359D52C9",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "63": {
+    "serial_number": "RA-CH3-IW3-WB-WR10-0002036",
+    "ring_mac": "F3:D9:E6:DE:B4:4E",
+    "ring_name": "UH_F3D9E6DEB44E",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "64": {
+    "serial_number": "RA-CH3-IW3-W1-WA07-0002076",
+    "ring_mac": "F0:88:4E:29:D9:9E",
+    "ring_name": "UH_F0884E29D99E",
+    "state": "PASSED",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.00.95.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  }
+}
