@@ -2053,7 +2053,8 @@ async function searchOldData() {
                     warming: 'Archive index warming',
                     direct_scan: 'Direct scan fallback',
                     missing: 'Archive unavailable',
-                    error: 'Index error'
+                    error: 'Index error',
+                    merged: 'Full archive scan'
                 };
                 indexStatus.textContent = sourceLabelMap[source] || (data.indexed ? 'Indexed search' : 'Direct scan fallback');
                 indexStatus.style.color = (source === 'direct_scan' || source === 'warming' || source === 'error') ? 'var(--warn)' : 'var(--ok)';

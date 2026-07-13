@@ -1,4 +1,5 @@
 import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
 import {execSync} from 'child_process';
@@ -10,6 +11,7 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [
+      react(),
       tailwindcss(),
       {
         name: 'minify-non-module-scripts',

@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 module.exports = {
   apps: [{
     name: 'bdr-api',
@@ -16,8 +18,8 @@ module.exports = {
     merge_logs: true,
     kill_timeout: 10000,
     env: {
-      AQC_PASSWORD: '1234',
-      NO_STARTUP_INDEX: '1'
+      AQC_PASSWORD: process.env.AQC_PASSWORD || '1234',
+      NO_STARTUP_INDEX: '0'
     }
   }]
 };

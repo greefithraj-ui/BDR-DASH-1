@@ -71,7 +71,7 @@ _archive_db_lock = threading.Lock()
 def _init_archive_db():
     """Initialize SQLite database for archive entries."""
     with _archive_db_lock:
-        conn = sqlite3.connect(_archive_db_path)
+        conn = sqlite3.connect(_archive_db_path, timeout=60.0)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA cache_size=-8000")
@@ -209,46 +209,46 @@ def _init_archive_db():
 def _add_archive_entry(entry, file_path):
     """Add or update an archive entry in SQLite database."""
     with _archive_db_lock:
-        conn = sqlite3.connect(_archive_db_path)
-        c = conn.cursor()
-        
-        serial = entry.get("serial_number", "")
-        c.execute("""
-            INSERT OR REPLACE INTO archive_entries 
-            (serial_number, serial_lower, file_path, machine, state, machine_avg_bdr, 
-             bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
-             inter_cycle_avg_bdr, phase, cycle, completed_workouts,
-             snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, slot,
-             avg_bdr_is_estimated)
-            VALUES (?, lower(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            serial,
-            serial,
-            file_path,
-            entry.get("machine"),
-            entry.get("state"),
-            entry.get("avg_bdr"),
-            entry.get("battery_current"),
-            entry.get("firmware_version"),
-            entry.get("ring_mac"),
-            entry.get("ring_name"),
-            entry.get("stored_avg_bdr"),
-            entry.get("inter_cycle_avg_bdr"),
-            entry.get("phase"),
-            entry.get("cycle"),
-            entry.get("completed_workouts"),
-            1,
-            entry.get("total_cycles"),
-            entry.get("completed_cycles"),
-            entry.get("test_start"),
-            entry.get("saved_at"),
-            entry.get("saved_at"),
-            entry.get("slot"),
-            entry.get("avg_bdr_is_estimated", False),
-        ))
-        
-        conn.commit()
-        conn.close()
+        conn = sqlite3.connect(_archive_db_path, timeout=60.0)
+        try:
+            c = conn.cursor()
+            serial = entry.get("serial_number", "")
+            c.execute("""
+                INSERT OR REPLACE INTO archive_entries 
+                (serial_number, serial_lower, file_path, machine, state, machine_avg_bdr, 
+                 bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
+                 inter_cycle_avg_bdr, phase, cycle, completed_workouts,
+                 snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, slot,
+                 avg_bdr_is_estimated)
+                VALUES (?, lower(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                serial,
+                serial,
+                file_path,
+                entry.get("machine"),
+                entry.get("state"),
+                entry.get("avg_bdr"),
+                entry.get("battery_current"),
+                entry.get("firmware_version"),
+                entry.get("ring_mac"),
+                entry.get("ring_name"),
+                entry.get("stored_avg_bdr"),
+                entry.get("inter_cycle_avg_bdr"),
+                entry.get("phase"),
+                entry.get("cycle"),
+                entry.get("completed_workouts"),
+                1,
+                entry.get("total_cycles"),
+                entry.get("completed_cycles"),
+                entry.get("test_start"),
+                entry.get("saved_at"),
+                entry.get("saved_at"),
+                entry.get("slot"),
+                entry.get("avg_bdr_is_estimated", False),
+            ))
+            conn.commit()
+        finally:
+            conn.close()
 
 def _search_archive_db(serials):
     """Search archive database for given serial numbers."""
@@ -427,7 +427,8 @@ def startup_event():
     thread = threading.Thread(target=_background_file_sync, daemon=True)
     thread.start()
     print(f"Background file sync started (every {FILE_SYNC_INTERVAL}s).")
-    if not os.environ.get("NO_STARTUP_INDEX"):
+    no_startup = os.environ.get("NO_STARTUP_INDEX", "")
+    if not no_startup or no_startup.lower() in ("0", "false", "no"):
         _ensure_archive_index()
         print("[api] Archive index building in background...")
     else:
@@ -1072,7 +1073,10 @@ def _calc_avg_bdr(slot_data):
         avg = bdr_data.get("avg_bdr")
         if avg is not None:
             return avg, False
-    completed = slot_data.get("completed_cycles", [])
+    completed = slot_data.get("completed_cycles")
+    if not completed:
+        bdr_state = slot_data.get("bdr_state") or {}
+        completed = bdr_state.get("completed_cycles") or []
     if isinstance(completed, list) and len(completed) > 0:
         values = [c.get("bdr") for c in completed if c.get("bdr") is not None]
         if values:
@@ -1182,6 +1186,7 @@ def _make_archive_entry(snap_file, saved_at, slot_key, slot_data):
         "stored_avg_bdr": fields["stored_avg_bdr"],
         "inter_cycle_avg_bdr": fields["inter_cycle_avg_bdr"],
         "test_start": fields["test_start"],
+        "start_time": fields["test_start"],
         "phase": fields["phase"],
         "cycle": fields["cycle"],
         "total_cycles": fields["total_cycles"],
@@ -1366,12 +1371,15 @@ def _fallback_scan_archive_for_serial(archive_root, serial_lower):
     return _fallback_scan_archive_for_serials(archive_root, [serial_lower]).get(serial_lower, [])
 
 
-def _fallback_scan_archive_for_serials(archive_root, serial_keys):
-    file_paths = []
-    for root, _, files in os.walk(str(archive_root)):
-        for fname in files:
-            if fname.endswith(".json"):
-                file_paths.append(Path(root) / fname)
+def _fallback_scan_archive_for_serials(archive_root, serial_keys, file_list=None):
+    if file_list is not None:
+        file_paths = file_list
+    else:
+        file_paths = []
+        for root, _, files in os.walk(str(archive_root)):
+            for fname in files:
+                if fname.endswith(".json"):
+                    file_paths.append(Path(root) / fname)
     if not file_paths:
         return {serial_key: [] for serial_key in serial_keys}
 
@@ -1443,46 +1451,54 @@ def _add_archive_entry_batch(entries):
     if not entries:
         return
     with _archive_db_lock:
-        conn = sqlite3.connect(_archive_db_path)
-        c = conn.cursor()
-        c.execute("BEGIN")
-        for entry, file_path in entries:
-            serial = entry.get("serial_number", "")
-            c.execute("""
-                INSERT OR REPLACE INTO archive_entries 
-                (serial_number, serial_lower, file_path, machine, state, machine_avg_bdr, 
-                 bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
-                 inter_cycle_avg_bdr, phase, cycle, completed_workouts,
-                 snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, slot,
-                 avg_bdr_is_estimated)
-                VALUES (?, lower(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                serial,
-                serial,
-                file_path,
-                entry.get("machine"),
-                entry.get("state"),
-                entry.get("avg_bdr"),
-                entry.get("battery_current"),
-                entry.get("firmware_version"),
-                entry.get("ring_mac"),
-                entry.get("ring_name"),
-                entry.get("stored_avg_bdr"),
-                entry.get("inter_cycle_avg_bdr"),
-                entry.get("phase"),
-                entry.get("cycle"),
-                entry.get("completed_workouts"),
-                1,
-                entry.get("total_cycles"),
-                entry.get("completed_cycles"),
-                entry.get("test_start"),
-                entry.get("saved_at"),
-                entry.get("saved_at"),
-                entry.get("slot"),
-                entry.get("avg_bdr_is_estimated", False),
-            ))
-        conn.commit()
-        conn.close()
+        conn = sqlite3.connect(_archive_db_path, timeout=60.0)
+        try:
+            c = conn.cursor()
+            c.execute("BEGIN")
+            for entry, file_path in entries:
+                serial = entry.get("serial_number", "")
+                c.execute("""
+                    INSERT OR REPLACE INTO archive_entries 
+                    (serial_number, serial_lower, file_path, machine, state, machine_avg_bdr, 
+                     bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
+                     inter_cycle_avg_bdr, phase, cycle, completed_workouts,
+                     snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, slot,
+                     avg_bdr_is_estimated)
+                    VALUES (?, lower(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    serial,
+                    serial,
+                    file_path,
+                    entry.get("machine"),
+                    entry.get("state"),
+                    entry.get("avg_bdr"),
+                    entry.get("battery_current"),
+                    entry.get("firmware_version"),
+                    entry.get("ring_mac"),
+                    entry.get("ring_name"),
+                    entry.get("stored_avg_bdr"),
+                    entry.get("inter_cycle_avg_bdr"),
+                    entry.get("phase"),
+                    entry.get("cycle"),
+                    entry.get("completed_workouts"),
+                    1,
+                    entry.get("total_cycles"),
+                    entry.get("completed_cycles"),
+                    entry.get("test_start"),
+                    entry.get("saved_at"),
+                    entry.get("saved_at"),
+                    entry.get("slot"),
+                    entry.get("avg_bdr_is_estimated", False),
+                ))
+            conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise e
+        finally:
+            conn.close()
 
 
 def _ingest_single_archive_file(file_path):
@@ -1583,23 +1599,31 @@ def _bulk_populate_sqlite_from_index(by_serial):
         return
     BATCH_SIZE = 500
     with _archive_db_lock:
-        conn = sqlite3.connect(_archive_db_path)
-        c = conn.cursor()
-        for i in range(0, len(all_entries), BATCH_SIZE):
-            batch = all_entries[i:i + BATCH_SIZE]
-            c.execute("BEGIN")
-            for row in batch:
-                c.execute("""
-                    INSERT OR REPLACE INTO archive_entries 
-                    (serial_number, serial_lower, file_path, machine, state, machine_avg_bdr, 
-                     bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
-                     inter_cycle_avg_bdr, phase, cycle, completed_workouts,
-                     snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, slot,
-                     avg_bdr_is_estimated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, row)
-            conn.commit()
-        conn.close()
+        conn = sqlite3.connect(_archive_db_path, timeout=60.0)
+        try:
+            c = conn.cursor()
+            for i in range(0, len(all_entries), BATCH_SIZE):
+                batch = all_entries[i:i + BATCH_SIZE]
+                c.execute("BEGIN")
+                for row in batch:
+                    c.execute("""
+                        INSERT OR REPLACE INTO archive_entries 
+                        (serial_number, serial_lower, file_path, machine, state, machine_avg_bdr, 
+                         bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
+                         inter_cycle_avg_bdr, phase, cycle, completed_workouts,
+                         snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, slot,
+                         avg_bdr_is_estimated)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, row)
+                conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise e
+        finally:
+            conn.close()
 
 
 def _search_archive_db_for_serials(serial_keys):
@@ -1612,138 +1636,138 @@ def _search_archive_db_for_serials(serial_keys):
     """
     if not serial_keys:
         return {}
-    conn = sqlite3.connect(_archive_db_path)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    results = {key: [] for key in serial_keys}
-
-    placeholders = ",".join("?" for _ in serial_keys)
-    params = serial_keys + serial_keys
+    conn = sqlite3.connect(_archive_db_path, timeout=60.0)
     try:
-        c.execute(f"""
-            SELECT serial_number, file_path, machine, state, machine_avg_bdr,
-                   bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
-                   inter_cycle_avg_bdr, phase, cycle, completed_workouts,
-                   snapshots, total_cycles, completed_cycles, start_time,
-                   saved_at, slot, last_update,
-                   avg_bdr_is_estimated,
-                   rn_global, rn_machine
-            FROM (
-                SELECT *,
-                       rn_global,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY serial_lower, COALESCE(machine,'')
-                           ORDER BY saved_at DESC NULLS LAST, last_update DESC NULLS LAST, id DESC
-                       ) AS rn_machine
-                FROM (
-                    SELECT *, ROW_NUMBER() OVER (
-                        PARTITION BY serial_lower
-                        ORDER BY saved_at DESC NULLS LAST, last_update DESC NULLS LAST, id DESC
-                    ) AS rn_global
-                    FROM archive_entries
-                    WHERE serial_lower IN ({placeholders})
-                       OR machine IN ({placeholders})
-                ) ranked_global
-            ) ranked_both
-            WHERE rn_global = 1 OR rn_machine = 1
-        """, params)
-        rows = c.fetchall()
-    except sqlite3.OperationalError:
-        conn.close()
-        return {}
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        results = {key: [] for key in serial_keys}
 
-    if not rows:
-        conn.close()
-        return results
-
-    serials_need_fb = []
-    for row in rows:
-        if row["rn_global"] == 1:
-            mg_avg = row["machine_avg_bdr"]
-            if mg_avg is None or mg_avg == 0.0:
-                serials_need_fb.append(row["serial_number"])
-
-    fallback_map = {}
-    if serials_need_fb:
-        unique_serials = list(set(serials_need_fb))
-        fb_placeholders = ",".join("?" for _ in unique_serials)
+        placeholders = ",".join("?" for _ in serial_keys)
+        params = serial_keys + serial_keys
         try:
             c.execute(f"""
-                SELECT serial_number, machine_avg_bdr
+                SELECT serial_number, file_path, machine, state, machine_avg_bdr,
+                       bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
+                       inter_cycle_avg_bdr, phase, cycle, completed_workouts,
+                       snapshots, total_cycles, completed_cycles, start_time,
+                       saved_at, slot, last_update,
+                       avg_bdr_is_estimated,
+                       rn_global, rn_machine
                 FROM (
-                    SELECT serial_number, machine_avg_bdr,
+                    SELECT *,
+                           rn_global,
                            ROW_NUMBER() OVER (
-                               PARTITION BY serial_number
+                               PARTITION BY serial_lower, COALESCE(machine,'')
                                ORDER BY saved_at DESC NULLS LAST, last_update DESC NULLS LAST, id DESC
-                           ) AS fb_rn
-                    FROM archive_entries
-                    WHERE serial_number IN ({fb_placeholders})
-                      AND machine_avg_bdr IS NOT NULL AND machine_avg_bdr != 0
-                )
-                WHERE fb_rn = 1
-            """, unique_serials)
-            for fb_row in c.fetchall():
-                fallback_map[fb_row[0]] = fb_row[1]
+                           ) AS rn_machine
+                    FROM (
+                        SELECT *, ROW_NUMBER() OVER (
+                            PARTITION BY serial_lower
+                            ORDER BY saved_at DESC NULLS LAST, last_update DESC NULLS LAST, id DESC
+                        ) AS rn_global
+                        FROM archive_entries
+                        WHERE serial_lower IN ({placeholders})
+                           OR machine IN ({placeholders})
+                    ) ranked_global
+                ) ranked_both
+                WHERE rn_global = 1 OR rn_machine = 1
+            """, params)
+            rows = c.fetchall()
         except sqlite3.OperationalError:
-            pass
+            return {}
 
-    for row in rows:
-        row_dict = dict(row)
-        sn = row_dict["serial_number"]
-        machine = row_dict["machine"] or ""
-        sn_lower = sn.lower()
-        machine_lower = machine.lower()
+        if not rows:
+            return results
 
-        matched_keys = [k for k in serial_keys if k == sn_lower or k == machine_lower]
-        if not matched_keys:
-            continue
+        serials_need_fb = []
+        for row in rows:
+            if row["rn_global"] == 1:
+                mg_avg = row["machine_avg_bdr"]
+                if mg_avg is None or mg_avg == 0.0:
+                    serials_need_fb.append(row["serial_number"])
 
-        rn_global = row_dict["rn_global"]
-        rn_machine = row_dict["rn_machine"]
-        row_type = "latest" if rn_global == 1 else "history"
+        fallback_map = {}
+        if serials_need_fb:
+            unique_serials = list(set(serials_need_fb))
+            fb_placeholders = ",".join("?" for _ in unique_serials)
+            try:
+                c.execute(f"""
+                    SELECT serial_number, machine_avg_bdr
+                    FROM (
+                        SELECT serial_number, machine_avg_bdr,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY serial_number
+                                   ORDER BY saved_at DESC NULLS LAST, last_update DESC NULLS LAST, id DESC
+                               ) AS fb_rn
+                        FROM archive_entries
+                        WHERE serial_number IN ({fb_placeholders})
+                          AND machine_avg_bdr IS NOT NULL AND machine_avg_bdr != 0
+                    )
+                    WHERE fb_rn = 1
+                """, unique_serials)
+                for fb_row in c.fetchall():
+                    fallback_map[fb_row[0]] = fb_row[1]
+            except sqlite3.OperationalError:
+                pass
 
-        fp = Path(row_dict["file_path"])
-        date_str = fp.parent.name
-        time_str = fp.stem
-        machine_name = machine or fp.parent.parent.name
+        for row in rows:
+            row_dict = dict(row)
+            sn = row_dict["serial_number"]
+            machine = row_dict["machine"] or ""
+            sn_lower = sn.lower()
+            machine_lower = machine.lower()
 
-        mg_avg = row_dict.get("machine_avg_bdr")
-        fb_avg = fallback_map.get(sn) if (mg_avg is None or mg_avg == 0.0) else None
+            matched_keys = [k for k in serial_keys if k == sn_lower or k == machine_lower]
+            if not matched_keys:
+                continue
 
-        entry = {
-            "row_type": row_type,
-            "machine": machine_name,
-            "date": date_str,
-            "time": time_str,
-            "slot": row_dict.get("slot"),
-            "saved_at": row_dict.get("saved_at") or "",
-            "serial_number": sn,
-            "state": row_dict.get("state") or "",
-            "battery_current": row_dict.get("bdr"),
-            "firmware_version": row_dict.get("firmware_version") or "",
-            "ring_mac": row_dict.get("ring_mac") or "",
-            "ring_name": row_dict.get("ring_name") or "",
-            "avg_bdr": mg_avg,
-            "fallback_avg_bdr": fb_avg,
-            "stored_avg_bdr": row_dict.get("stored_avg_bdr"),
-            "inter_cycle_avg_bdr": row_dict.get("inter_cycle_avg_bdr"),
-            "test_start": row_dict.get("start_time"),
-            "start_time": row_dict.get("start_time"),
-            "phase": row_dict.get("phase"),
-            "cycle": row_dict.get("cycle"),
-            "total_cycles": row_dict.get("total_cycles"),
-            "completed_cycles": row_dict.get("completed_cycles"),
-            "completed_workouts": row_dict.get("completed_workouts"),
-            "file_path": str(fp),
-            "last_update": row_dict.get("last_update"),
-            "avg_bdr_is_estimated": bool(row_dict.get("avg_bdr_is_estimated")),
-        }
+            rn_global = row_dict["rn_global"]
+            rn_machine = row_dict["rn_machine"]
+            row_type = "latest" if rn_global == 1 else "history"
 
-        for sk in matched_keys:
-            results[sk].append(entry)
+            fp = Path(row_dict["file_path"])
+            date_str = fp.parent.name
+            time_str = fp.stem
+            machine_name = machine or fp.parent.parent.name
 
-    conn.close()
-    return results
+            mg_avg = row_dict.get("machine_avg_bdr")
+            fb_avg = fallback_map.get(sn) if (mg_avg is None or mg_avg == 0.0) else None
+
+            entry = {
+                "row_type": row_type,
+                "machine": machine_name,
+                "date": date_str,
+                "time": time_str,
+                "slot": row_dict.get("slot"),
+                "saved_at": row_dict.get("saved_at") or "",
+                "serial_number": sn,
+                "state": row_dict.get("state") or "",
+                "battery_current": row_dict.get("bdr"),
+                "firmware_version": row_dict.get("firmware_version") or "",
+                "ring_mac": row_dict.get("ring_mac") or "",
+                "ring_name": row_dict.get("ring_name") or "",
+                "avg_bdr": mg_avg,
+                "fallback_avg_bdr": fb_avg,
+                "stored_avg_bdr": row_dict.get("stored_avg_bdr"),
+                "inter_cycle_avg_bdr": row_dict.get("inter_cycle_avg_bdr"),
+                "test_start": row_dict.get("start_time"),
+                "start_time": row_dict.get("start_time"),
+                "phase": row_dict.get("phase"),
+                "cycle": row_dict.get("cycle"),
+                "total_cycles": row_dict.get("total_cycles"),
+                "completed_cycles": row_dict.get("completed_cycles"),
+                "completed_workouts": row_dict.get("completed_workouts"),
+                "file_path": str(fp),
+                "last_update": row_dict.get("last_update"),
+                "avg_bdr_is_estimated": bool(row_dict.get("avg_bdr_is_estimated")),
+            }
+
+            for sk in matched_keys:
+                results[sk].append(entry)
+
+        return results
+    finally:
+        conn.close()
 
 
 def _build_archive_index_async():
@@ -2028,26 +2052,213 @@ def _aggregate_archive_results(raw, archive_root=None):
     return rows
 
 
-def _search_old_data_payload(serial_values):
-    archive_root = _get_archive_root()
-    if not archive_root:
-        return {"ok": False, "error": "Archive directory not found"}
+def _search_ring_status_for_serials(serial_keys):
+    """Query ring_status (latest-state table) for serials or machine names.
 
+    Returns a dict keyed by each serial_key, each value a list of entries
+    whose shape matches the old merged response (see _search_old_data_payload).
+    """
+    if not serial_keys:
+        return {}
+    try:
+        from postgres_db import get_connection
+        import psycopg2.extras
+        pg_conn = get_connection()
+        try:
+            with pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM   ring_status
+                    WHERE  LOWER(serial_number) = ANY(%s)
+                       OR  LOWER(machine)       = ANY(%s)
+                    ORDER  BY serial_number, machine
+                    """,
+                    (serial_keys, serial_keys),
+                )
+                rows = cur.fetchall()
+        finally:
+            pg_conn.close()
+    except Exception as e:
+        print(f"[api] ring_status query error: {e}")
+        return {}
+
+    results_map = {key: [] for key in serial_keys}
+    for row in rows:
+        rec = dict(row)
+        sn_lower = str(rec.get("serial_number", "")).lower()
+        machine  = rec.get("machine", "")
+
+        # Determine which serial_keys this row matches
+        matched_keys = [k for k in serial_keys if k == sn_lower or k == machine.lower()]
+        if not matched_keys:
+            continue
+
+        # saved_at may be a datetime object coming from psycopg2; normalise to ISO string
+        saved_at_val = rec.get("saved_at")
+        if saved_at_val is not None and hasattr(saved_at_val, "isoformat"):
+            saved_at_val = saved_at_val.isoformat()
+        elif saved_at_val is not None:
+            saved_at_val = str(saved_at_val)
+
+        phase_start_val = rec.get("phase_start_time")
+        if phase_start_val is not None and hasattr(phase_start_val, "isoformat"):
+            phase_start_val = phase_start_val.isoformat()
+        elif phase_start_val is not None:
+            phase_start_val = str(phase_start_val)
+
+        entry = {
+            "type":                    "latest",
+            "serial_number":           rec.get("serial_number", ""),
+            "machine":                 machine,
+            "state":                   rec.get("state", "") or "",
+            "battery_current":         rec.get("battery_current"),
+            "firmware_version":        rec.get("firmware_version", "") or "",
+            "ring_mac":                rec.get("ring_mac", "") or "",
+            "ring_name":               rec.get("ring_name", "") or "",
+            "avg_bdr":                 rec.get("avg_bdr"),
+            "machine_avg_bdr":         rec.get("avg_bdr"),
+            "avg_bdr_is_stale":        False,
+            "avg_bdr_is_estimated":    False,
+            "stored_avg_bdr":          None,
+            "inter_cycle_avg_bdr":     None,
+            "test_start":              phase_start_val,
+            "phase":                   rec.get("phase", "") or "",
+            "cycle":                   rec.get("cycle"),
+            "snapshots":               1,
+            "total_cycles":            rec.get("cycle"),
+            "completed_cycles":        rec.get("cycle"),
+            "completed_workouts":      None,
+            "start_time":              phase_start_val,
+            "last_update":             saved_at_val or "",
+            "saved_at":                saved_at_val or "",
+            "file_path":               rec.get("file_path", "") or "",
+        }
+
+        for sk in matched_keys:
+            results_map[sk].append(entry)
+
+    return results_map
+
+
+def _search_old_data_payload(serial_values, use_new_table=False):
+    from data.postgres_db import search_archive_in_pg
     parsed_serials = _parse_old_data_serials(serial_values)
     if not parsed_serials:
         return {"ok": False, "error": "At least one valid serial number is required"}
 
-    # Background safety-net rescan runs every 30 min via _reindex_archive_background.
-    # New files are ingested immediately via main.py -> POST /api/old-data/ingest-file,
-    # so no need to trigger a full rescan here.
-
     serial_keys = [item["key"] for item in parsed_serials]
-    db_results = _search_archive_db_for_serials(serial_keys)
+
+    if use_new_table:
+        # ── New path: ring_status (single query, no merge needed) ──────────────
+        rs_results = _search_ring_status_for_serials(serial_keys)
+
+        results = []
+        for item in parsed_serials:
+            key = item["key"]
+            for record in rs_results.get(key, []):
+                enriched = dict(record)
+                enriched["query_serial"] = item["serial"]
+                results.append(enriched)
+
+        total = len(results)
+        is_multi_serial = len(parsed_serials) > 1
+        distinct_machines = len({r.get("machine", "") for r in results})
+        print(f"[api] ring_status search for {serial_keys}: "
+              f"{total} record(s) across {distinct_machines} machine(s)")
+
+        payload = {
+            "ok": True,
+            "count": total,
+            "results": results,
+            "indexed": True,
+            "index_source": "ring_status",
+            "multi_serial": is_multi_serial,
+            "serials": [item["serial"] for item in parsed_serials],
+        }
+        if not is_multi_serial:
+            payload["serial"] = parsed_serials[0]["serial"]
+        return payload
+
+    # ── Old path: three-tier merge (PG archive_entries + SQLite + file scan) ───
+    # Source 1: PostgreSQL
+    pg_results = search_archive_in_pg(serial_keys)
+
+    # Source 2: SQLite archive index
+    sqlite_results = _search_archive_db_for_serials(serial_keys)
+
+    # Source 3: Targeted JSON file scan for machines missing from PG
+    archive_root = _get_archive_root()
+    file_scan_results: dict = {key: [] for key in serial_keys}
+    if archive_root and archive_root.is_dir():
+        already_covered: dict = {key: set() for key in serial_keys}
+        for key in serial_keys:
+            for entry in pg_results.get(key, []):
+                m = str(entry.get("machine", "") or "")
+                if m:
+                    already_covered[key].add(m)
+            for entry in sqlite_results.get(key, []):
+                m = str(entry.get("machine", "") or "")
+                if m:
+                    already_covered[key].add(m)
+
+        machines_to_scan: set = set()
+        for machine_dir in archive_root.iterdir():
+            if machine_dir.is_dir():
+                if any(machine_dir.name not in already_covered[k] for k in serial_keys):
+                    machines_to_scan.add(machine_dir)
+
+        if machines_to_scan and len(machines_to_scan) <= 3:
+            targeted_files = []
+            for machine_dir in machines_to_scan:
+                targeted_files.extend(machine_dir.rglob("*.json"))
+            if targeted_files:
+                file_scan_results = _fallback_scan_archive_for_serials(
+                    archive_root, serial_keys, file_list=targeted_files,
+                )
+        elif len(machines_to_scan) > 3:
+            print(f"[api] Skipping targeted file scan for {serial_keys}: "
+                  f"too many uncovered machines to scan in HTTP thread ({len(machines_to_scan)})")
+
+    # Merge all three sources, deduplicating by (machine, saved_at)
+    merged_results: dict = {key: [] for key in serial_keys}
+    for key in serial_keys:
+        seen: set = set()
+        combined = []
+
+        for source_entries in (
+            pg_results.get(key, []),
+            sqlite_results.get(key, []),
+            file_scan_results.get(key, []),
+        ):
+            for entry in source_entries:
+                machine = str(entry.get("machine", "") or "")
+                saved_at = str(entry.get("saved_at", "") or "")
+                dedup_key = (machine, saved_at)
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                need_copy = (
+                    "machine_avg_bdr" not in entry
+                    or "last_update" not in entry
+                )
+                if need_copy:
+                    entry = dict(entry)
+                    if "machine_avg_bdr" not in entry:
+                        entry["machine_avg_bdr"] = (
+                            entry.get("avg_bdr")
+                            or entry.get("fallback_avg_bdr")
+                        )
+                    if not entry.get("last_update"):
+                        entry["last_update"] = entry.get("saved_at", "")
+                combined.append(entry)
+
+        merged_results[key] = combined
 
     results = []
     for item in parsed_serials:
-        serial_results = _aggregate_archive_results(db_results.get(item["key"], []), archive_root)
-        for record in serial_results:
+        key = item["key"]
+        for record in merged_results.get(key, []):
             enriched = dict(record)
             enriched["query_serial"] = item["serial"]
             results.append(enriched)
@@ -2055,12 +2266,19 @@ def _search_old_data_payload(serial_values):
     total = len(results)
     is_multi_serial = len(parsed_serials) > 1
 
+    distinct_machines = len({r.get("machine", "") for r in results})
+    print(f"[api] Old-data search for {serial_keys}: "
+          f"{total} record(s) across {distinct_machines} machine(s) "
+          f"(pg={len(pg_results.get(serial_keys[0], []) if serial_keys else [])}, "
+          f"sqlite={len(sqlite_results.get(serial_keys[0], []) if serial_keys else [])}, "
+          f"files={len(file_scan_results.get(serial_keys[0], []) if serial_keys else [])})")
+
     payload = {
         "ok": True,
         "count": total,
         "results": results,
         "indexed": True,
-        "index_source": "sqlite",
+        "index_source": "merged",
         "multi_serial": is_multi_serial,
         "serials": [item["serial"] for item in parsed_serials],
     }
@@ -2071,9 +2289,10 @@ def _search_old_data_payload(serial_values):
 
 @app.get("/api/old-data/search/{serial:path}")
 @app.get("/api/old-data/search/{serial:path}/")
-def search_old_data(serial: str):
+async def search_old_data(serial: str, request: Request):
     try:
-        return CompactJSONResponse(content=_search_old_data_payload([serial]))
+        use_new = request.query_params.get("use_new_table", "").lower() in ("1", "true", "yes")
+        return CompactJSONResponse(content=_search_old_data_payload([serial], use_new_table=use_new))
     except Exception as e:
         import traceback
         print(f"[api] ERROR in single-serial search: {str(e)}")
@@ -2088,7 +2307,8 @@ async def search_old_data_batch(request: Request):
         payload = await request.json()
         print(f"[api] Received search payload: {payload}")
         serial_values = payload.get("serials") if isinstance(payload, dict) else None
-        result = _search_old_data_payload(serial_values)
+        use_new = payload.get("use_new_table", False) if isinstance(payload, dict) else False
+        result = _search_old_data_payload(serial_values, use_new_table=bool(use_new))
         return CompactJSONResponse(content=result)
     except Exception as e:
         import traceback
@@ -2099,14 +2319,42 @@ async def search_old_data_batch(request: Request):
 
 @app.post("/api/old-data/ingest-file")
 async def ingest_archive_file(request: Request):
-    """Immediately parse a single archive JSON file and upsert into SQLite."""
+    """Immediately parse a single archive JSON file and upsert into PostgreSQL."""
     try:
+        from data.postgres_db import ingest_archive_to_pg
         payload = await request.json()
         file_path = payload.get("file_path") if isinstance(payload, dict) else None
         if not file_path:
             return CompactJSONResponse(content={"ok": False, "error": "file_path required"}, status_code=400)
-        result = _ingest_single_archive_file(file_path)
-        return CompactJSONResponse(content=result)
+            
+        import json
+        from pathlib import Path
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            
+        slots = data.get("slots", {})
+        if not isinstance(slots, dict):
+            return CompactJSONResponse(content={"ok": True, "msg": "No slots found"})
+            
+        saved_at = data.get("saved_at", "")
+        file_path_obj = Path(file_path)
+        
+        for slot_id, slot_data in slots.items():
+            if isinstance(slot_data, dict) and "serial_number" in slot_data:
+                enriched_entry = _make_archive_entry(file_path_obj, saved_at, slot_id, slot_data)
+                ingest_archive_to_pg(enriched_entry)
+
+        # Upsert into ring_status (latest-state table)
+        try:
+            from ring_status import ingest_file_to_ring_status
+            pg_conn = get_connection()
+            ingest_file_to_ring_status(pg_conn, file_path)
+            pg_conn.commit()
+            pg_conn.close()
+        except Exception:
+            pass
+
+        return CompactJSONResponse(content={"ok": True})
     except Exception as e:
         import traceback
         return CompactJSONResponse(content={"ok": False, "error": str(e)}, status_code=500)

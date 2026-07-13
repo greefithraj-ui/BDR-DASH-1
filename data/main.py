@@ -33,7 +33,18 @@ REMOTE_COMMAND = (
     ". .venv/bin/activate && "
     "python3 -m assembly_test_app.bdr_report"
 )
-AUTH_PASSWORD = "1234"
+
+AUTH_PASSWORD = os.environ.get("AQC_PASSWORD", "1234")
+_env_file = _PARENT / ".env"
+if _env_file.exists():
+    with open(_env_file, "r", encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line.startswith("AQC_PASSWORD="):
+                _val = _line.split("=", 1)[1].strip().strip("\"'")
+                if _val:
+                    AUTH_PASSWORD = _val
+
 AUTO_DOWNLOAD_INTERVAL_SECONDS = 30
 AUTO_LOG_COLLECT_INTERVAL_SECONDS = 1800
 LOG_FILES_TO_COLLECT = ["app.log", "app.log1"]
@@ -700,6 +711,24 @@ def archive_bdr_snapshot(dest_path):
 
     if count:
         print(f"       [+] Archived {count} BDR files to {archive_root}")
+
+        # Upsert into ring_status (latest-state table)
+        try:
+            from ring_status import ingest_file_to_ring_status
+            pg_conn = postgres_db.get_connection()
+            rs_count = 0
+            for fpath in copied_files:
+                try:
+                    rs_count += ingest_file_to_ring_status(pg_conn, fpath)
+                except Exception:
+                    pass
+            pg_conn.commit()
+            pg_conn.close()
+            if rs_count:
+                print(f"       [+] ring_status: upserted {rs_count} rows")
+        except Exception:
+            pass
+
         import urllib.request
         for fpath in copied_files:
             try:

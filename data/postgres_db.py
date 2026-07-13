@@ -68,39 +68,36 @@ class _PooledConnection:
 def is_available():
     global _pg_available, _last_pg_check
     now = time.time()
-    # Always recheck if we haven't checked in PG_RECHECK_AFTER seconds
+    
+    if not HAS_PSYCOPG2:
+        raise RuntimeError("PostgreSQL driver (psycopg2) is not installed. Database is required.")
+        
     if _pg_available is None or (now - _last_pg_check) >= _PG_RECHECK_AFTER:
-        if not HAS_PSYCOPG2:
-            _pg_available = False
-            _last_pg_check = now
-            return False
         try:
             conn = psycopg2.connect(**PG_CONFIG)
             conn.close()
             _pg_available = True
             _last_pg_check = now
             return True
-        except Exception:
+        except Exception as e:
             _pg_available = False
             _last_pg_check = now
-            return False
-    # If we have a cached True but haven't checked in a while, still recheck
+            raise RuntimeError(f"PostgreSQL database is unreachable: {e}")
+            
     if _pg_available and (now - _last_pg_check) >= (_PG_RECHECK_AFTER):
-        # Recheck even if we thought it was available
-        if not HAS_PSYCOPG2:
-            _pg_available = False
-            _last_pg_check = now
-            return False
         try:
             conn = psycopg2.connect(**PG_CONFIG)
             conn.close()
             _pg_available = True
             _last_pg_check = now
             return True
-        except Exception:
+        except Exception as e:
             _pg_available = False
             _last_pg_check = now
-            return False
+            raise RuntimeError(f"PostgreSQL database is unreachable: {e}")
+            
+    if not _pg_available:
+        raise RuntimeError("PostgreSQL database is unreachable.")
     return _pg_available
 
 
@@ -214,6 +211,12 @@ def init_db():
             init_live_tables(conn)
             add_dashboard_indexes(conn)
             init_logs_table(conn)
+            init_archive_table(conn)
+            try:
+                from ring_status import init_ring_status_table
+                init_ring_status_table(conn)
+            except Exception as e:
+                print(f"[postgres_db] ring_status init skipped: {e}")
             try:
                 with conn.cursor() as cur:
                     cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
@@ -774,3 +777,187 @@ def save_log_metadata(machine_name, machine_ip, file_name, file_size, storage_lo
     except Exception as e:
         print(f"[postgres_db] Error saving log metadata (connection): {e}")
         return False
+
+def init_archive_table(conn):
+    """Create archive_entries table if it doesn't exist."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS archive_entries (
+                id SERIAL PRIMARY KEY,
+                serial_number VARCHAR(255) NOT NULL,
+                serial_lower VARCHAR(255) NOT NULL,
+                machine VARCHAR(255),
+                state VARCHAR(50),
+                machine_avg_bdr REAL,
+                bdr REAL,
+                snapshots INTEGER,
+                total_cycles INTEGER,
+                completed_cycles INTEGER,
+                start_time REAL,
+                last_update REAL,
+                saved_at VARCHAR(100),
+                content JSONB,
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(serial_number, machine, saved_at)
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_archive_serial_lower ON archive_entries(serial_lower)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_archive_saved_at ON archive_entries(saved_at DESC)")
+
+def ingest_archive_to_pg(record):
+    """Insert a new archive record into PostgreSQL."""
+    if not HAS_PSYCOPG2:
+        return False
+    try:
+        pg_conn = get_connection()
+        try:
+            with pg_conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO archive_entries (
+                        serial_number, serial_lower, machine, state, machine_avg_bdr, bdr,
+                        snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (serial_number, machine, saved_at) DO NOTHING
+                """, (
+                    record.get("serial_number"),
+                    str(record.get("serial_number", "")).lower(),
+                    record.get("machine"),
+                    record.get("state"),
+                    record.get("machine_avg_bdr"),
+                    record.get("bdr"),
+                    record.get("snapshots"),
+                    record.get("total_cycles"),
+                    record.get("completed_cycles"),
+                    record.get("start_time"),
+                    record.get("last_update"),
+                    record.get("saved_at"),
+                    json.dumps(record) if record else "{}"
+                ))
+            pg_conn.commit()
+            return True
+        except Exception as e:
+            pg_conn.rollback()
+            print(f"[postgres_db] Error ingesting archive record: {e}")
+            return False
+        finally:
+            pg_conn.close()
+    except Exception as e:
+        print(f"[postgres_db] Connection error ingesting archive: {e}")
+        return False
+
+def search_archive_in_pg(serial_keys):
+    """
+    Query PostgreSQL for the latest snapshot of each serial number per machine.
+    Returns a dictionary grouped by serial_lower.
+    """
+    if not HAS_PSYCOPG2 or not serial_keys:
+        return {}
+    
+    results_map = {key: [] for key in serial_keys}
+    try:
+        pg_conn = get_connection()
+        try:
+            with pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # Remove DISTINCT ON so it returns ALL historical snapshots for the serials
+                query = """
+                    SELECT content
+                    FROM archive_entries
+                    WHERE serial_lower = ANY(%s)
+                    ORDER BY serial_lower, machine, saved_at DESC
+                """
+                cur.execute(query, (serial_keys,))
+                rows = cur.fetchall()
+                # Group rows by (serial_lower, machine)
+                grouped_rows = {}
+                for row in rows:
+                    rec = row["content"]
+                    if not rec: continue
+                    s_lower = str(rec.get("serial_number", "")).lower()
+                    machine = rec.get("machine", "")
+                    combo_key = (s_lower, machine)
+                    if combo_key not in grouped_rows:
+                        grouped_rows[combo_key] = []
+                    grouped_rows[combo_key].append(rec)
+                
+                # Process each group
+                for combo_key, recs in grouped_rows.items():
+                    s_lower, machine = combo_key
+                    
+                    # Find the best historical BDR record
+                    best_bdr_rec = None
+                    for r in recs:
+                        avg = r.get("avg_bdr")
+                        if avg is not None and avg != 0.0:
+                            best_bdr_rec = r
+                            break
+                            
+                    for i, rec in enumerate(recs):
+                        row_type = "latest" if i == 0 else "history"
+                        
+                        # Apply fallback logic to "latest" if it's stale/missing data
+                        is_stale = rec.get("avg_bdr_is_stale", False) or rec.get("avg_bdr") is None or rec.get("avg_bdr") == 0.0
+                        
+                        final_avg = rec.get("avg_bdr")
+                        final_est = rec.get("avg_bdr_is_estimated", False)
+                        final_stored = rec.get("stored_avg_bdr")
+                        final_inter = rec.get("inter_cycle_avg_bdr")
+                        final_completed = rec.get("completed_cycles", 0)
+                        final_workouts = rec.get("completed_workouts")
+                        final_stale = rec.get("avg_bdr_is_stale", False)
+                        
+                        if is_stale and best_bdr_rec:
+                            final_avg = best_bdr_rec.get("avg_bdr")
+                            final_est = best_bdr_rec.get("avg_bdr_is_estimated", False)
+                            final_stored = best_bdr_rec.get("stored_avg_bdr")
+                            final_inter = best_bdr_rec.get("inter_cycle_avg_bdr")
+                            final_completed = best_bdr_rec.get("completed_cycles", 0)
+                            final_workouts = best_bdr_rec.get("completed_workouts")
+                            final_stale = False
+                            
+                            # Also copy over state if the current one is blank or just running,
+                            # but let's stick to BDR logic first.
+                            if not str(rec.get("state", "")).strip():
+                                hs = str(best_bdr_rec.get("state", ""))
+                                if hs and "bdr" not in hs.lower() and hs.strip():
+                                    rec["state"] = hs
+                        
+                        if s_lower in results_map:
+                            results_map[s_lower].append({
+                                "type": row_type,
+                                "serial_number": rec.get("serial_number", ""),
+                                "machine": machine,
+                                "date": rec.get("date", ""),
+                                "time": rec.get("time", ""),
+                                "slot": rec.get("slot"),
+                                "state": rec.get("state", ""),
+                                "battery_current": rec.get("battery_current"),
+                                "firmware_version": rec.get("firmware_version", ""),
+                                "ring_mac": rec.get("ring_mac", ""),
+                                "ring_name": rec.get("ring_name", ""),
+                                "avg_bdr": final_avg,
+                                "machine_avg_bdr": final_avg,
+                                "avg_bdr_is_stale": final_stale,
+                                "avg_bdr_is_estimated": final_est,
+                                "stored_avg_bdr": final_stored,
+                                "inter_cycle_avg_bdr": final_inter,
+                                "test_start": rec.get("test_start"),
+                                "phase": rec.get("phase"),
+                                "cycle": rec.get("cycle"),
+                                "snapshots": rec.get("snapshots", 1),
+                                "total_cycles": rec.get("total_cycles", 0),
+                                "completed_cycles": final_completed,
+                                "completed_workouts": final_workouts,
+                                "start_time": rec.get("start_time") or rec.get("test_start"),
+                                "last_update": rec.get("saved_at", ""),
+                                "saved_at": rec.get("saved_at", ""),
+                                "file_path": rec.get("file_path", "")
+                            })
+            return results_map
+        except Exception as e:
+            print(f"[postgres_db] Error searching archive: {e}")
+            return {}
+        finally:
+            pg_conn.close()
+    except Exception as e:
+        print(f"[postgres_db] Connection error searching archive: {e}")
+        return {}
