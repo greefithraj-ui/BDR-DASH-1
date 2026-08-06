@@ -1,0 +1,81 @@
+{
+  "saved_at": "2026-08-01T10:00:00.000000+05:30",
+  "slots": {
+    "1": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "AA:11:22:33:44:55",
+      "ring_name": "UH_AA1122334455",
+      "serial_number": "RP-CH3-P18-WD-PG07-0005555",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 64,
+      "charging_current_ma": -0.937,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:59:30.000000+05:30",
+          48,
+          -0.117,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    },
+    "2": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "BB:11:22:33:44:66",
+      "ring_name": "UH_BB1122334466",
+      "serial_number": "RP-CH3-P18-WD-PA10-0006666",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 55,
+      "charging_current_ma": 12.655,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:45:00.000000+05:30",
+          55,
+          12.655,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    },
+    "3": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "CC:11:22:33:44:77",
+      "ring_name": "UH_CC1122334477",
+      "serial_number": "RA-CH3-LFK-W1-AG07-0007777",
+      "product": "AIR",
+      "firmware_version": "02.01.33.03",
+      "battery_current": 76,
+      "charging_current_ma": 0.117,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:30:00.000000+05:30",
+          76,
+          0.117,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    },
+    "4": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "DD:11:22:33:44:88",
+      "ring_name": "UH_DD1122334488",
+      "serial_number": "RP-CH2-P18-WD-PR08-0008888",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 85,
+      "charging_current_ma": 11.053,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:15:00.000000+05:30",
+          85,
+          11.053,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    }
+  }
+}

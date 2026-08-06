@@ -1,0 +1,70 @@
+{
+  "1": {
+    "serial_number": "RP-CH3-P18-WD-PG07-0005555",
+    "product": "PRO",
+    "ring_mac": "AA:11:22:33:44:55",
+    "ring_name": "UH_AA1122334455",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "2": {
+    "serial_number": "RP-CH3-P18-WD-PA10-0006666",
+    "product": "PRO",
+    "ring_mac": "BB:11:22:33:44:66",
+    "ring_name": "UH_BB1122334466",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "3": {
+    "serial_number": "RA-CH3-LFK-W1-AG07-0007777",
+    "product": "AIR",
+    "ring_mac": "CC:11:22:33:44:77",
+    "ring_name": "UH_CC1122334477",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.01.33.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "4": {
+    "serial_number": "RP-CH2-P18-WD-PR08-0008888",
+    "product": "PRO",
+    "ring_mac": "DD:11:22:33:44:88",
+    "ring_name": "UH_DD1122334488",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  }
+}

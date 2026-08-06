@@ -2,7 +2,6 @@ import json
 import mmap
 import os
 import re
-import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -48,6 +47,7 @@ from diagnostics import (
 
 from postgres_db import (
     is_available as pg_available,
+    wait_for_pg,
     init_db as init_pg,
     get_live_bdr,
     get_live_bdr_machine,
@@ -63,216 +63,6 @@ from postgres_db import (
     list_machines_fallback,
 )
 
-
-# SQLite database for archive entries
-_archive_db_path = os.path.join(os.path.dirname(__file__), "archive.db")
-_archive_db_lock = threading.Lock()
-
-def _init_archive_db():
-    """Initialize SQLite database for archive entries."""
-    with _archive_db_lock:
-        conn = sqlite3.connect(_archive_db_path, timeout=60.0)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA cache_size=-8000")
-        c = conn.cursor()
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS archive_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                serial_number TEXT NOT NULL,
-                serial_lower TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                machine TEXT,
-                state TEXT,
-                machine_avg_bdr REAL,
-                bdr REAL,
-                snapshots INTEGER,
-                total_cycles INTEGER,
-                completed_cycles INTEGER,
-                start_time REAL,
-                last_update REAL,
-                saved_at TEXT,
-                created_at REAL DEFAULT (strftime('%s', 'now')),
-                UNIQUE(serial_number, file_path)
-            )
-        """)
-        c.execute("""
-            CREATE INDEX IF NOT EXISTS idx_serial_number ON archive_entries(serial_number)
-        """)
-        c.execute("""
-            CREATE INDEX IF NOT EXISTS idx_file_path ON archive_entries(file_path)
-        """)
-        c.execute("""
-            CREATE INDEX IF NOT EXISTS idx_created_at ON archive_entries(created_at)
-        """)
-        # Add saved_at column if it doesn't exist (schema migration)
-        try:
-            c.execute("ALTER TABLE archive_entries ADD COLUMN saved_at TEXT")
-        except sqlite3.OperationalError:
-            pass  # column already exists
-        # Add slot column if it doesn't exist (schema migration)
-        try:
-            c.execute("ALTER TABLE archive_entries ADD COLUMN slot INTEGER")
-        except sqlite3.OperationalError:
-            pass  # column already exists
-        c.execute("""
-            CREATE INDEX IF NOT EXISTS idx_saved_at ON archive_entries(saved_at)
-        """)
-        c.execute("""
-            CREATE INDEX IF NOT EXISTS idx_machine ON archive_entries(machine)
-        """)
-        c.execute("""
-            CREATE INDEX IF NOT EXISTS idx_serial_lower ON archive_entries(serial_lower)
-        """)
-        # Schema migrations for additional columns
-        for col_def in [
-            ("firmware_version", "TEXT"),
-            ("ring_mac", "TEXT"),
-            ("ring_name", "TEXT"),
-            ("stored_avg_bdr", "REAL"),
-            ("inter_cycle_avg_bdr", "REAL"),
-            ("phase", "TEXT"),
-            ("cycle", "INTEGER"),
-            ("completed_workouts", "INTEGER"),
-            ("avg_bdr_is_estimated", "INTEGER"),
-        ]:
-            try:
-                c.execute(f"ALTER TABLE archive_entries ADD COLUMN {col_def[0]} {col_def[1]}")
-            except sqlite3.OperationalError:
-                pass
-        # Migrate old entries: copy last_update into saved_at if saved_at is null
-        try:
-            c.execute("UPDATE archive_entries SET saved_at = last_update WHERE saved_at IS NULL AND last_update IS NOT NULL")
-        except Exception:
-            pass
-        # Remove old garbage entries written by broken _add_archive_entry (all NULL data fields)
-        c.execute("DELETE FROM archive_entries WHERE last_update IS NULL AND saved_at IS NULL")
-        # Migration: add serial_lower column if missing
-        try:
-            c.execute("ALTER TABLE archive_entries ADD COLUMN serial_lower TEXT")
-            c.execute("UPDATE archive_entries SET serial_lower = LOWER(serial_number) WHERE serial_lower IS NULL")
-            print("[api] Populated serial_lower column")
-        except sqlite3.OperationalError:
-            pass  # column already exists
-        c.execute("CREATE INDEX IF NOT EXISTS idx_serial_lower ON archive_entries(serial_lower)")
-        # Migration: fix incorrect file_path UNIQUE -> UNIQUE(serial_number, file_path)
-        try:
-            c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='archive_entries'")
-            row = c.fetchone()
-            if row and 'file_path TEXT NOT NULL UNIQUE' in row[0]:
-                print("[api] Migrating archive_entries schema: file_path UNIQUE -> UNIQUE(serial_number, file_path)")
-                c.execute("""
-                    CREATE TABLE archive_entries_new (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        serial_number TEXT NOT NULL,
-                        serial_lower TEXT NOT NULL,
-                        file_path TEXT NOT NULL,
-                        machine TEXT,
-                        state TEXT,
-                        machine_avg_bdr REAL,
-                        bdr REAL,
-                        snapshots INTEGER,
-                        total_cycles INTEGER,
-                        completed_cycles INTEGER,
-                        start_time REAL,
-                        last_update REAL,
-                        saved_at TEXT,
-                        created_at REAL DEFAULT (strftime('%s', 'now')),
-                        slot INTEGER,
-                        firmware_version TEXT,
-                        ring_mac TEXT,
-                        ring_name TEXT,
-                        stored_avg_bdr REAL,
-                        inter_cycle_avg_bdr REAL,
-                        phase TEXT,
-                        cycle INTEGER,
-                        completed_workouts INTEGER,
-                        UNIQUE(serial_number, file_path)
-                    )
-                """)
-                c.execute("INSERT OR IGNORE INTO archive_entries_new (id, serial_number, serial_lower, file_path, machine, state, machine_avg_bdr, bdr, snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, created_at, slot, firmware_version, ring_mac, ring_name, stored_avg_bdr, inter_cycle_avg_bdr, phase, cycle, completed_workouts) SELECT id, serial_number, lower(serial_number), file_path, machine, state, machine_avg_bdr, bdr, snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, created_at, slot, firmware_version, ring_mac, ring_name, stored_avg_bdr, inter_cycle_avg_bdr, phase, cycle, completed_workouts FROM archive_entries")
-                c.execute("INSERT OR IGNORE INTO archive_entries_new SELECT * FROM archive_entries")
-                c.execute("DROP TABLE archive_entries")
-                c.execute("ALTER TABLE archive_entries_new RENAME TO archive_entries")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_serial_number ON archive_entries(serial_number)")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_file_path ON archive_entries(file_path)")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON archive_entries(created_at)")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_saved_at ON archive_entries(saved_at)")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_machine ON archive_entries(machine)")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_serial_lower ON archive_entries(serial_lower)")
-                print("[api] Archive entries schema migration complete")
-        except Exception:
-            pass
-        conn.commit()
-        conn.close()
-
-def _add_archive_entry(entry, file_path):
-    """Add or update an archive entry in SQLite database."""
-    with _archive_db_lock:
-        conn = sqlite3.connect(_archive_db_path, timeout=60.0)
-        try:
-            c = conn.cursor()
-            serial = entry.get("serial_number", "")
-            c.execute("""
-                INSERT OR REPLACE INTO archive_entries 
-                (serial_number, serial_lower, file_path, machine, state, machine_avg_bdr, 
-                 bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
-                 inter_cycle_avg_bdr, phase, cycle, completed_workouts,
-                 snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, slot,
-                 avg_bdr_is_estimated)
-                VALUES (?, lower(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                serial,
-                serial,
-                file_path,
-                entry.get("machine"),
-                entry.get("state"),
-                entry.get("avg_bdr"),
-                entry.get("battery_current"),
-                entry.get("firmware_version"),
-                entry.get("ring_mac"),
-                entry.get("ring_name"),
-                entry.get("stored_avg_bdr"),
-                entry.get("inter_cycle_avg_bdr"),
-                entry.get("phase"),
-                entry.get("cycle"),
-                entry.get("completed_workouts"),
-                1,
-                entry.get("total_cycles"),
-                entry.get("completed_cycles"),
-                entry.get("test_start"),
-                entry.get("saved_at"),
-                entry.get("saved_at"),
-                entry.get("slot"),
-                entry.get("avg_bdr_is_estimated", False),
-            ))
-            conn.commit()
-        finally:
-            conn.close()
-
-def _search_archive_db(serials):
-    """Search archive database for given serial numbers."""
-    conn = sqlite3.connect(_archive_db_path)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    
-    results = []
-    for serial in serials:
-        # Exact match first
-        c.execute("SELECT * FROM archive_entries WHERE serial_number = ? ORDER BY saved_at DESC, last_update DESC", (serial,))
-        rows = c.fetchall()
-        for row in rows:
-            results.append(dict(row))
-        
-        # Partial match
-        if not rows:
-            c.execute("SELECT * FROM archive_entries WHERE serial_number LIKE ? ORDER BY saved_at DESC, last_update DESC", (f"%{serial}%",))
-            rows = c.fetchall()
-            for row in rows:
-                results.append(dict(row))
-    
-    conn.close()
-    return results
 
 def _prune_old_archive_files(days=7):
     """Prune JSON archive files older than N days, keeping the entries in SQLite."""
@@ -291,7 +81,10 @@ def _prune_old_archive_files(days=7):
             if not date_dir.is_dir():
                 continue
             for json_file in date_dir.glob("*.json"):
-                file_mtime = json_file.stat().st_mtime
+                try:
+                    file_mtime = json_file.stat().st_mtime
+                except OSError:
+                    continue
                 if file_mtime < cutoff_epoch:
                     try:
                         json_file.unlink()
@@ -404,35 +197,59 @@ def force_resync_stale_data(old_bdr, old_rings):
 
 @app.on_event("startup")
 def startup_event():
-    _init_archive_db()
     print("Initializing PostgreSQL...")
-    for attempt in range(3):
-        if pg_available():
-            try:
-                init_pg()
-                print("PostgreSQL initialized.")
-                break
-            except Exception as e:
-                print(f"PostgreSQL init attempt {attempt+1} failed: {e}")
-                if attempt == 2:
-                    print("PostgreSQL not available - data will not be served.")
-                else:
-                    time.sleep(2)
-        else:
-            if attempt == 2:
-                print("PostgreSQL not available - data will not be served.")
-            else:
-                print(f"PostgreSQL not yet available, retrying in 2s (attempt {attempt+1}/3)...")
-                time.sleep(2)
+    if wait_for_pg():
+        try:
+            init_pg()
+            print("PostgreSQL initialized.")
+        except Exception as e:
+            print(f"PostgreSQL init failed: {e}")
+            print("PostgreSQL not available - data will not be served.")
+    else:
+        print("PostgreSQL not available - data will not be served.")
     thread = threading.Thread(target=_background_file_sync, daemon=True)
     thread.start()
     print(f"Background file sync started (every {FILE_SYNC_INTERVAL}s).")
-    no_startup = os.environ.get("NO_STARTUP_INDEX", "")
-    if not no_startup or no_startup.lower() in ("0", "false", "no"):
-        _ensure_archive_index()
-        print("[api] Archive index building in background...")
-    else:
-        print("[api] Skipping startup index build (NO_STARTUP_INDEX set).")
+
+    # Background: prune old archive JSON files once per day
+    def _prune_archive_files_background():
+        while True:
+            try:
+                pruned_count = _prune_old_archive_files(days=3)
+                if pruned_count > 0:
+                    print(f"[api] Pruned {pruned_count} old archive files")
+            except Exception as e:
+                print(f"[api] Error pruning archive files: {e}")
+            time.sleep(86400)
+
+    pruning_thread = threading.Thread(target=_prune_archive_files_background, daemon=True)
+    pruning_thread.start()
+    print("[api] Started background archive pruning thread")
+
+    # Background: prune ring_status rows older than 30 days, once per day
+    def _prune_ring_status_background():
+        while True:
+            try:
+                if pg_available():
+                    conn = get_connection()
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                "DELETE FROM ring_status WHERE saved_at < NOW() - INTERVAL '30 days'"
+                            )
+                            deleted = cur.rowcount
+                        conn.commit()
+                        if deleted > 0:
+                            print(f"[api] Pruned {deleted} stale ring_status rows (>30 days)")
+                    finally:
+                        conn.close()
+            except Exception as e:
+                print(f"[api] Error pruning ring_status: {e}")
+            time.sleep(86400)
+
+    ring_prune_thread = threading.Thread(target=_prune_ring_status_background, daemon=True)
+    ring_prune_thread.start()
+    print("[api] Started background ring_status pruning thread (30-day retention)")
 
 app.add_middleware(
     CORSMiddleware,
@@ -1199,57 +1016,6 @@ def _archive_entry_key(machine, slot_key):
     return f"{machine}|{slot_key}"
 
 
-ARCHIVE_INDEX_CACHE_FILE = Path(__file__).resolve().with_name("archive_index_cache.json")
-ARCHIVE_SEARCH_FALLBACK_WORKERS = max(8, min(32, (os.cpu_count() or 4) * 2))
-ARCHIVE_INDEX_BUILD_WORKERS = max(4, min(16, (os.cpu_count() or 4)))
-
-# Persistent in-memory index: serial -> latest entries per machine+slot
-_archive_index = None
-_archive_index_lock = threading.Lock()
-_archive_index_ready = False
-_archive_index_building = False
-_archive_index_source = "warming"
-
-
-def _collect_archive_signature(archive_root):
-    archive_root_str = str(archive_root)
-    return {
-        "archive_root": archive_root_str,
-    }
-
-
-def _load_archive_index_cache(signature):
-    if not ARCHIVE_INDEX_CACHE_FILE.exists():
-        return None
-    try:
-        payload = json.loads(ARCHIVE_INDEX_CACHE_FILE.read_text("utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    cached_sig = payload.get("signature", {})
-    if isinstance(cached_sig, dict) and cached_sig.get("archive_root") == signature.get("archive_root"):
-        index = payload.get("index")
-        if isinstance(index, dict):
-            return index
-    return None
-
-
-def _save_archive_index_cache(signature, index_data):
-    payload = {"signature": signature, "index": index_data}
-    tmp_path = ARCHIVE_INDEX_CACHE_FILE.with_suffix(".tmp")
-    try:
-        tmp_path.write_text(
-            json.dumps(payload, separators=(",", ":"), ensure_ascii=False),
-            encoding="utf-8",
-        )
-        tmp_path.replace(ARCHIVE_INDEX_CACHE_FILE)
-    except OSError as exc:
-        print(f"[api] Failed to write archive index cache: {exc}")
-        try:
-            if tmp_path.exists():
-                tmp_path.unlink()
-        except OSError:
-            pass
-
 
 def _merge_latest_entries(target, source):
     for key, entry in source.items():
@@ -1412,480 +1178,6 @@ def _fallback_scan_archive_for_serials(archive_root, serial_keys, file_list=None
         serial_key: list(entries.values())
         for serial_key, entries in merged.items()
     }
-
-
-def _process_single_archive_file(snap_file, by_serial, db_entries=None):
-    """Process one archive JSON file and update the serial index.
-
-    The in-memory index (by_serial) keeps only the latest entry per (machine, slot)
-    for fast lookups. SQLite (db_entries) stores ALL entries for complete history.
-    Returns the number of entries added/modified in the index.
-    """
-    try:
-        data = json.loads(snap_file.read_text("utf-8", errors="replace"))
-    except (json.JSONDecodeError, OSError):
-        return 0
-    saved_at = data.get("saved_at", "")
-    machine_name = snap_file.parent.parent.name
-    count = 0
-    for slot_key, slot_data in data.get("slots", {}).items():
-        sn = slot_data.get("serial_number", "").strip()
-        if not sn or sn in ("--", "N/A"):
-            continue
-        serial_key = sn.lower()
-        serial_entries = by_serial.setdefault(serial_key, {})
-        entry_key = _archive_entry_key(machine_name, slot_key)
-        existing = serial_entries.get(entry_key)
-        entry = _make_archive_entry(snap_file, saved_at, slot_key, slot_data)
-        if not existing or saved_at > existing.get("saved_at", ""):
-            serial_entries[entry_key] = entry
-            count += 1
-        # Always store ALL entries in SQLite for complete historical data
-        if db_entries is not None:
-            db_entries.append((entry, str(snap_file)))
-    return count
-
-
-def _add_archive_entry_batch(entries):
-    """Batch-insert entries into SQLite in a single transaction."""
-    if not entries:
-        return
-    with _archive_db_lock:
-        conn = sqlite3.connect(_archive_db_path, timeout=60.0)
-        try:
-            c = conn.cursor()
-            c.execute("BEGIN")
-            for entry, file_path in entries:
-                serial = entry.get("serial_number", "")
-                c.execute("""
-                    INSERT OR REPLACE INTO archive_entries 
-                    (serial_number, serial_lower, file_path, machine, state, machine_avg_bdr, 
-                     bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
-                     inter_cycle_avg_bdr, phase, cycle, completed_workouts,
-                     snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, slot,
-                     avg_bdr_is_estimated)
-                    VALUES (?, lower(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    serial,
-                    serial,
-                    file_path,
-                    entry.get("machine"),
-                    entry.get("state"),
-                    entry.get("avg_bdr"),
-                    entry.get("battery_current"),
-                    entry.get("firmware_version"),
-                    entry.get("ring_mac"),
-                    entry.get("ring_name"),
-                    entry.get("stored_avg_bdr"),
-                    entry.get("inter_cycle_avg_bdr"),
-                    entry.get("phase"),
-                    entry.get("cycle"),
-                    entry.get("completed_workouts"),
-                    1,
-                    entry.get("total_cycles"),
-                    entry.get("completed_cycles"),
-                    entry.get("test_start"),
-                    entry.get("saved_at"),
-                    entry.get("saved_at"),
-                    entry.get("slot"),
-                    entry.get("avg_bdr_is_estimated", False),
-                ))
-            conn.commit()
-        except Exception as e:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            raise e
-        finally:
-            conn.close()
-
-
-def _ingest_single_archive_file(file_path):
-    """Parse a single JSON snapshot file and upsert it into the archive DB."""
-    try:
-        from pathlib import Path
-        fp = Path(file_path)
-        if not fp.is_file():
-            return {"ok": False, "error": "File not found"}
-        machine = fp.parent.parent.name
-        date_str = fp.parent.name
-        time_str = fp.stem
-        with open(fp, "r", encoding="utf-8") as f:
-            snap = json.load(f)
-        slots = snap.get("slots", snap)
-        if isinstance(slots, dict):
-            entries = []
-            for slot_key, slot_data in slots.items():
-                bdr_data = slot_data.get("bdr_data") or {}
-                bdr_state = slot_data.get("bdr_state") or {}
-                completed_cycles = bdr_state.get("completed_cycles") or []
-                bdr_cycles = bdr_data.get("cycles") or []
-                completed_cycle_count = max(len(completed_cycles), len(bdr_cycles))
-                avg_bdr, is_estimated = _calc_avg_bdr(slot_data)
-                entry = {
-                    "machine": machine,
-                    "date": date_str,
-                    "time": time_str,
-                    "slot": int(slot_key),
-                    "saved_at": snap.get("saved_at", f"{date_str}T{time_str}"),
-                    "serial_number": slot_data.get("serial_number", "").strip(),
-                    "state": slot_data.get("state", ""),
-                    "avg_bdr": avg_bdr,
-                    "avg_bdr_is_estimated": is_estimated,
-                    "battery_current": slot_data.get("battery_current"),
-                    "firmware_version": slot_data.get("firmware_version", ""),
-                    "ring_mac": slot_data.get("ring_mac", ""),
-                    "ring_name": slot_data.get("ring_name", ""),
-                    "stored_avg_bdr": bdr_data.get("stored_avg_bdr"),
-                    "inter_cycle_avg_bdr": bdr_data.get("inter_cycle_avg_bdr"),
-                    "test_start": bdr_data.get("test_start"),
-                    "phase": bdr_state.get("phase") or bdr_data.get("phase_at_finalize"),
-                    "cycle": bdr_state.get("cycle") or bdr_data.get("final_cycle"),
-                    "total_cycles": completed_cycle_count,
-                    "completed_cycles": completed_cycle_count,
-                    "completed_workouts": _calc_completed_workouts(slot_data),
-                }
-                entries.append((entry, str(fp)))
-            _add_archive_entry_batch(entries)
-            return {"ok": True, "entries": len(entries)}
-        return {"ok": False, "error": "No slots dict"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def _bulk_populate_sqlite_from_index(by_serial):
-    """Populate SQLite archive DB from an already-built in-memory index."""
-    if not by_serial:
-        return
-    archive_root = _get_archive_root()
-    if not archive_root:
-        return
-    all_entries = []
-    for serial_key, entries in by_serial.items():
-        for entry_key, entry in entries.items():
-            machine = entry.get("machine", "")
-            date = entry.get("date", "")
-            time_str = entry.get("time", "")
-            slot = entry.get("slot", 0)
-            file_path = str(archive_root / machine / date / f"{time_str}.json")
-            serial_number = entry.get("serial_number", serial_key)
-            all_entries.append((
-                serial_number,
-                serial_number.lower(),
-                file_path,
-                machine,
-                entry.get("state"),
-                entry.get("avg_bdr"),
-                entry.get("battery_current"),
-                entry.get("firmware_version"),
-                entry.get("ring_mac"),
-                entry.get("ring_name"),
-                entry.get("stored_avg_bdr"),
-                entry.get("inter_cycle_avg_bdr"),
-                entry.get("phase"),
-                entry.get("cycle"),
-                entry.get("completed_workouts"),
-                1,
-                entry.get("total_cycles"),
-                entry.get("completed_cycles"),
-                entry.get("test_start"),
-                entry.get("saved_at"),
-                entry.get("saved_at"),
-                entry.get("slot"),
-                entry.get("avg_bdr_is_estimated", False),
-            ))
-    if not all_entries:
-        return
-    BATCH_SIZE = 500
-    with _archive_db_lock:
-        conn = sqlite3.connect(_archive_db_path, timeout=60.0)
-        try:
-            c = conn.cursor()
-            for i in range(0, len(all_entries), BATCH_SIZE):
-                batch = all_entries[i:i + BATCH_SIZE]
-                c.execute("BEGIN")
-                for row in batch:
-                    c.execute("""
-                        INSERT OR REPLACE INTO archive_entries 
-                        (serial_number, serial_lower, file_path, machine, state, machine_avg_bdr, 
-                         bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
-                         inter_cycle_avg_bdr, phase, cycle, completed_workouts,
-                         snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, slot,
-                         avg_bdr_is_estimated)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, row)
-                conn.commit()
-        except Exception as e:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            raise e
-        finally:
-            conn.close()
-
-
-def _search_archive_db_for_serials(serial_keys):
-    """Search archive entries directly from SQLite data, no JSON files needed.
-
-    Queries all stored fields from SQLite and constructs result entries
-    matching the format produced by the in-memory index or direct scan.
-    Searches both serial_number and machine columns so that querying
-    by machine name (e.g. "aqc-03") returns all rings that were in that machine.
-    """
-    if not serial_keys:
-        return {}
-    conn = sqlite3.connect(_archive_db_path, timeout=60.0)
-    try:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        results = {key: [] for key in serial_keys}
-
-        placeholders = ",".join("?" for _ in serial_keys)
-        params = serial_keys + serial_keys
-        try:
-            c.execute(f"""
-                SELECT serial_number, file_path, machine, state, machine_avg_bdr,
-                       bdr, firmware_version, ring_mac, ring_name, stored_avg_bdr,
-                       inter_cycle_avg_bdr, phase, cycle, completed_workouts,
-                       snapshots, total_cycles, completed_cycles, start_time,
-                       saved_at, slot, last_update,
-                       avg_bdr_is_estimated,
-                       rn_global, rn_machine
-                FROM (
-                    SELECT *,
-                           rn_global,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY serial_lower, COALESCE(machine,'')
-                               ORDER BY saved_at DESC NULLS LAST, last_update DESC NULLS LAST, id DESC
-                           ) AS rn_machine
-                    FROM (
-                        SELECT *, ROW_NUMBER() OVER (
-                            PARTITION BY serial_lower
-                            ORDER BY saved_at DESC NULLS LAST, last_update DESC NULLS LAST, id DESC
-                        ) AS rn_global
-                        FROM archive_entries
-                        WHERE serial_lower IN ({placeholders})
-                           OR machine IN ({placeholders})
-                    ) ranked_global
-                ) ranked_both
-                WHERE rn_global = 1 OR rn_machine = 1
-            """, params)
-            rows = c.fetchall()
-        except sqlite3.OperationalError:
-            return {}
-
-        if not rows:
-            return results
-
-        serials_need_fb = []
-        for row in rows:
-            if row["rn_global"] == 1:
-                mg_avg = row["machine_avg_bdr"]
-                if mg_avg is None or mg_avg == 0.0:
-                    serials_need_fb.append(row["serial_number"])
-
-        fallback_map = {}
-        if serials_need_fb:
-            unique_serials = list(set(serials_need_fb))
-            fb_placeholders = ",".join("?" for _ in unique_serials)
-            try:
-                c.execute(f"""
-                    SELECT serial_number, machine_avg_bdr
-                    FROM (
-                        SELECT serial_number, machine_avg_bdr,
-                               ROW_NUMBER() OVER (
-                                   PARTITION BY serial_number
-                                   ORDER BY saved_at DESC NULLS LAST, last_update DESC NULLS LAST, id DESC
-                               ) AS fb_rn
-                        FROM archive_entries
-                        WHERE serial_number IN ({fb_placeholders})
-                          AND machine_avg_bdr IS NOT NULL AND machine_avg_bdr != 0
-                    )
-                    WHERE fb_rn = 1
-                """, unique_serials)
-                for fb_row in c.fetchall():
-                    fallback_map[fb_row[0]] = fb_row[1]
-            except sqlite3.OperationalError:
-                pass
-
-        for row in rows:
-            row_dict = dict(row)
-            sn = row_dict["serial_number"]
-            machine = row_dict["machine"] or ""
-            sn_lower = sn.lower()
-            machine_lower = machine.lower()
-
-            matched_keys = [k for k in serial_keys if k == sn_lower or k == machine_lower]
-            if not matched_keys:
-                continue
-
-            rn_global = row_dict["rn_global"]
-            rn_machine = row_dict["rn_machine"]
-            row_type = "latest" if rn_global == 1 else "history"
-
-            fp = Path(row_dict["file_path"])
-            date_str = fp.parent.name
-            time_str = fp.stem
-            machine_name = machine or fp.parent.parent.name
-
-            mg_avg = row_dict.get("machine_avg_bdr")
-            fb_avg = fallback_map.get(sn) if (mg_avg is None or mg_avg == 0.0) else None
-
-            entry = {
-                "row_type": row_type,
-                "machine": machine_name,
-                "date": date_str,
-                "time": time_str,
-                "slot": row_dict.get("slot"),
-                "saved_at": row_dict.get("saved_at") or "",
-                "serial_number": sn,
-                "state": row_dict.get("state") or "",
-                "battery_current": row_dict.get("bdr"),
-                "firmware_version": row_dict.get("firmware_version") or "",
-                "ring_mac": row_dict.get("ring_mac") or "",
-                "ring_name": row_dict.get("ring_name") or "",
-                "avg_bdr": mg_avg,
-                "fallback_avg_bdr": fb_avg,
-                "stored_avg_bdr": row_dict.get("stored_avg_bdr"),
-                "inter_cycle_avg_bdr": row_dict.get("inter_cycle_avg_bdr"),
-                "test_start": row_dict.get("start_time"),
-                "start_time": row_dict.get("start_time"),
-                "phase": row_dict.get("phase"),
-                "cycle": row_dict.get("cycle"),
-                "total_cycles": row_dict.get("total_cycles"),
-                "completed_cycles": row_dict.get("completed_cycles"),
-                "completed_workouts": row_dict.get("completed_workouts"),
-                "file_path": str(fp),
-                "last_update": row_dict.get("last_update"),
-                "avg_bdr_is_estimated": bool(row_dict.get("avg_bdr_is_estimated")),
-            }
-
-            for sk in matched_keys:
-                results[sk].append(entry)
-
-        return results
-    finally:
-        conn.close()
-
-
-def _build_archive_index_async():
-    global _archive_index, _archive_index_ready, _archive_index_building, _archive_index_source
-    with _archive_index_lock:
-        if _archive_index_building:
-            print("[api] Archive index build already in progress, skipping...")
-            return
-        _archive_index_building = True
-
-    archive_root = _get_archive_root()
-    if not archive_root:
-        with _archive_index_lock:
-            _archive_index = {}
-            _archive_index_ready = True
-            _archive_index_building = False
-            _archive_index_source = "missing"
-        return
-
-    try:
-        # Collect all archive JSON files for parallel processing
-        all_files = list(archive_root.rglob("*.json"))
-        if not all_files:
-            with _archive_index_lock:
-                _archive_index_building = False
-                if not _archive_index_ready:
-                    _archive_index_ready = True
-            print("[api] No archive files found.")
-            return
-
-        workers = ARCHIVE_INDEX_BUILD_WORKERS
-        all_db_entries = []
-
-        if workers <= 1 or len(all_files) < 100:
-            # Sequential processing for small sets
-            db_batch = []
-            for snap_file in sorted(all_files):
-                _process_single_archive_file(snap_file, {}, db_batch)
-                if len(db_batch) >= 200:
-                    _add_archive_entry_batch(db_batch)
-                    db_batch.clear()
-            if db_batch:
-                _add_archive_entry_batch(db_batch)
-            print(f"[api] Processed {len(all_files)} files sequentially")
-        else:
-            # Parallel processing with ThreadPoolExecutor
-            chunk_size = max(1, (len(all_files) + workers - 1) // workers)
-            merge_lock = threading.Lock()
-            BATCH_FLUSH = 5000
-
-            def process_chunk(file_chunk):
-                local_db = []
-                for snap_file in file_chunk:
-                    _process_single_archive_file(snap_file, {}, local_db)
-                return local_db
-
-            print(f"[api] Processing {len(all_files)} files with {workers} workers ({chunk_size} per chunk)...")
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = [
-                    executor.submit(process_chunk, all_files[i:i + chunk_size])
-                    for i in range(0, len(all_files), chunk_size)
-                ]
-                completed = 0
-                for future in as_completed(futures):
-                    try:
-                        chunk_db = future.result()
-                        with merge_lock:
-                            all_db_entries.extend(chunk_db)
-                            if len(all_db_entries) >= BATCH_FLUSH:
-                                _add_archive_entry_batch(all_db_entries)
-                                all_db_entries.clear()
-                        completed += 1
-                        if completed % 10 == 0:
-                            print(f"[api] Index build progress: {completed}/{len(futures)} chunks")
-                    except Exception as e:
-                        print(f"[api] Index chunk failed: {e}")
-
-            # Write remaining DB entries
-            if all_db_entries:
-                _add_archive_entry_batch(all_db_entries)
-                all_db_entries.clear()
-            print(f"[api] Index build complete: {completed} chunks processed")
-
-        with _archive_index_lock:
-            _archive_index = None
-            if not _archive_index_ready:
-                _archive_index_ready = True
-            _archive_index_building = False
-            _archive_index_source = "rebuilt"
-        print(f"[api] Archive index rebuilt from {len(all_files)} files, in-memory index freed")
-    except Exception as exc:
-        with _archive_index_lock:
-            _archive_index_building = False
-        print(f"[api] Archive index build failed: {exc}")
-
-
-def _ensure_archive_index():
-    global _archive_index_source
-    if _archive_index_ready:
-        return True
-    with _archive_index_lock:
-        if _archive_index_ready:
-            return True
-        if not _archive_index_building:
-            _archive_index_source = "warming"
-            thread = threading.Thread(target=_build_archive_index_async, daemon=True)
-            thread.start()
-    return False
-
-
-def _await_archive_index(timeout_seconds=60):
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        with _archive_index_lock:
-            if _archive_index_ready:
-                return True
-        time.sleep(0.05)
-    return False
 
 
 def _find_latest_snapshot_for_serial(serial_number, machine, archive_root, stale_saved_at=None):
@@ -2102,15 +1394,19 @@ def _search_ring_status_for_serials(serial_keys):
             saved_at_val = str(saved_at_val)
 
         phase_start_val = rec.get("phase_start_time")
-        if phase_start_val is not None and hasattr(phase_start_val, "isoformat"):
-            phase_start_val = phase_start_val.isoformat()
+        if phase_start_val is not None and hasattr(phase_start_val, "timestamp"):
+            phase_start_val = phase_start_val.timestamp()
         elif phase_start_val is not None:
-            phase_start_val = str(phase_start_val)
+            try:
+                phase_start_val = float(phase_start_val)
+            except (TypeError, ValueError):
+                phase_start_val = None
 
         entry = {
             "type":                    "latest",
             "serial_number":           rec.get("serial_number", ""),
             "machine":                 machine,
+            "slot":                    rec.get("slot"),
             "state":                   rec.get("state", "") or "",
             "battery_current":         rec.get("battery_current"),
             "firmware_version":        rec.get("firmware_version", "") or "",
@@ -2180,105 +1476,30 @@ def _search_old_data_payload(serial_values, use_new_table=False):
             payload["serial"] = parsed_serials[0]["serial"]
         return payload
 
-    # ── Old path: three-tier merge (PG archive_entries + SQLite + file scan) ───
-    # Source 1: PostgreSQL
+    # ── PG-only path ──────────────────────────────────────────────────────
     pg_results = search_archive_in_pg(serial_keys)
-
-    # Source 2: SQLite archive index
-    sqlite_results = _search_archive_db_for_serials(serial_keys)
-
-    # Source 3: Targeted JSON file scan for machines missing from PG
-    archive_root = _get_archive_root()
-    file_scan_results: dict = {key: [] for key in serial_keys}
-    if archive_root and archive_root.is_dir():
-        already_covered: dict = {key: set() for key in serial_keys}
-        for key in serial_keys:
-            for entry in pg_results.get(key, []):
-                m = str(entry.get("machine", "") or "")
-                if m:
-                    already_covered[key].add(m)
-            for entry in sqlite_results.get(key, []):
-                m = str(entry.get("machine", "") or "")
-                if m:
-                    already_covered[key].add(m)
-
-        machines_to_scan: set = set()
-        for machine_dir in archive_root.iterdir():
-            if machine_dir.is_dir():
-                if any(machine_dir.name not in already_covered[k] for k in serial_keys):
-                    machines_to_scan.add(machine_dir)
-
-        if machines_to_scan and len(machines_to_scan) <= 3:
-            targeted_files = []
-            for machine_dir in machines_to_scan:
-                targeted_files.extend(machine_dir.rglob("*.json"))
-            if targeted_files:
-                file_scan_results = _fallback_scan_archive_for_serials(
-                    archive_root, serial_keys, file_list=targeted_files,
-                )
-        elif len(machines_to_scan) > 3:
-            print(f"[api] Skipping targeted file scan for {serial_keys}: "
-                  f"too many uncovered machines to scan in HTTP thread ({len(machines_to_scan)})")
-
-    # Merge all three sources, deduplicating by (machine, saved_at)
-    merged_results: dict = {key: [] for key in serial_keys}
-    for key in serial_keys:
-        seen: set = set()
-        combined = []
-
-        for source_entries in (
-            pg_results.get(key, []),
-            sqlite_results.get(key, []),
-            file_scan_results.get(key, []),
-        ):
-            for entry in source_entries:
-                machine = str(entry.get("machine", "") or "")
-                saved_at = str(entry.get("saved_at", "") or "")
-                dedup_key = (machine, saved_at)
-                if dedup_key in seen:
-                    continue
-                seen.add(dedup_key)
-                need_copy = (
-                    "machine_avg_bdr" not in entry
-                    or "last_update" not in entry
-                )
-                if need_copy:
-                    entry = dict(entry)
-                    if "machine_avg_bdr" not in entry:
-                        entry["machine_avg_bdr"] = (
-                            entry.get("avg_bdr")
-                            or entry.get("fallback_avg_bdr")
-                        )
-                    if not entry.get("last_update"):
-                        entry["last_update"] = entry.get("saved_at", "")
-                combined.append(entry)
-
-        merged_results[key] = combined
 
     results = []
     for item in parsed_serials:
         key = item["key"]
-        for record in merged_results.get(key, []):
+        for record in pg_results.get(key, []):
             enriched = dict(record)
             enriched["query_serial"] = item["serial"]
             results.append(enriched)
 
     total = len(results)
     is_multi_serial = len(parsed_serials) > 1
-
     distinct_machines = len({r.get("machine", "") for r in results})
     print(f"[api] Old-data search for {serial_keys}: "
           f"{total} record(s) across {distinct_machines} machine(s) "
-          f"(pg={len(pg_results.get(serial_keys[0], []) if serial_keys else [])}, "
-          f"sqlite={len(sqlite_results.get(serial_keys[0], []) if serial_keys else [])}, "
-          f"files={len(file_scan_results.get(serial_keys[0], []) if serial_keys else [])})")
+          f"(pg={total})")
 
     payload = {
         "ok": True,
         "count": total,
         "results": results,
         "indexed": True,
-        "index_source": "merged",
+        "index_source": "pg",
         "multi_serial": is_multi_serial,
         "serials": [item["serial"] for item in parsed_serials],
     }
@@ -2361,45 +1582,8 @@ async def ingest_archive_file(request: Request):
 
 
 if __name__ == "__main__":
-    # NB: DB init, PG init, file sync, and initial archive index build
-    # are handled by the startup_event (@app.on_event("startup")).
-    
-    # Background: prune old archive JSON files once per day
-    def _prune_archive_files_background():
-        while True:
-            try:
-                pruned_count = _prune_old_archive_files(days=2)
-                if pruned_count > 0:
-                    print(f"[api] Pruned {pruned_count} old archive files")
-            except Exception as e:
-                print(f"[api] Error pruning archive files: {e}")
-            time.sleep(86400)
-    
-    pruning_thread = threading.Thread(target=_prune_archive_files_background, daemon=True)
-    pruning_thread.start()
-    print("[api] Started background archive pruning thread")
-    
-    # Background: periodically refresh SQLite from JSON files
-    # so newly archived JSON files are picked up without a restart.
-    # Increased to 30 min since we now search SQLite directly (no in-memory index).
-    # The guard in _build_archive_index_async prevents concurrent runs.
-    def _reindex_archive_background():
-        initial_delay = 120
-        interval = 1800
-        time.sleep(initial_delay)
-        while True:
-            try:
-                print("[api] Background archive index refresh starting...")
-                _build_archive_index_async()
-                print("[api] Background archive index refresh complete")
-            except Exception as e:
-                print(f"[api] Error during background archive index refresh: {e}")
-            time.sleep(interval)
-    
-    reindex_thread = threading.Thread(target=_reindex_archive_background, daemon=True)
-    reindex_thread.start()
-    print("[api] Started background archive index refresh thread (every 30 min)")
-    
+    # NB: All background threads (pruning, ring_status cleanup)
+    # are now started in startup_event() so they run on every launch path.
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
 

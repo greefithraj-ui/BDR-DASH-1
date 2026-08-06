@@ -1,0 +1,36 @@
+{
+  "4": {
+    "serial_number": "RP-CH3-P18-WD-PA10-0004444",
+    "product": "PRO",
+    "ring_mac": "E4:22:33:44:55:44",
+    "ring_name": "UH_E42233445544",
+    "state": "FAILED",
+    "queued_at": null,
+    "error": "BATTERY_VOLTAGE_OUT_OF_RANGE",
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "FAILED"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 2
+  },
+  "6": {
+    "serial_number": "RP-CH2-P18-WD-PR08-0006000",
+    "product": "PRO",
+    "ring_mac": "E5:22:33:44:55:66",
+    "ring_name": "UH_E52233445566",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  }
+}

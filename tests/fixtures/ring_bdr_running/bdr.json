@@ -1,0 +1,100 @@
+{
+  "saved_at": "2026-08-01T10:00:00.000000+05:30",
+  "slots": {
+    "1": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "E8:22:33:44:55:01",
+      "ring_name": "UH_E82233445501",
+      "serial_number": "RP-CH3-P18-WD-PA10-0005101",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 5,
+      "charging_current_ma": -0.937,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:59:30.000000+05:30",
+          5,
+          -0.937,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    },
+    "5": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "E9:22:33:44:55:05",
+      "ring_name": "UH_E92233445505",
+      "serial_number": "RP-CH3-P18-WD-PA10-0005105",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 44,
+      "charging_current_ma": 9.1,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:59:30.000000+05:30",
+          44,
+          9.1,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    },
+    "8": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "EA:22:33:44:55:08",
+      "ring_name": "UH_EA2233445508",
+      "serial_number": "RP-CH2-P18-WD-PR08-0005108",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 67,
+      "charging_current_ma": 2.4,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:59:30.000000+05:30",
+          67,
+          2.4,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    },
+    "20": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "EB:22:33:44:55:20",
+      "ring_name": "UH_EB2233445520",
+      "serial_number": "RP-CH3-P18-WD-PG07-0005120",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 51,
+      "charging_current_ma": 6.3,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:59:30.000000+05:30",
+          51,
+          6.3,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    },
+    "30": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "EC:22:33:44:55:30",
+      "ring_name": "UH_EC2233445530",
+      "serial_number": "RP-CH3-P18-WD-PA09-0005130",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 38,
+      "charging_current_ma": -0.5,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:59:30.000000+05:30",
+          38,
+          -0.5,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    }
+  }
+}

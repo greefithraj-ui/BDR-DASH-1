@@ -1,0 +1,87 @@
+{
+  "1": {
+    "serial_number": "RP-CH3-P18-WD-PA10-0005101",
+    "product": "PRO",
+    "ring_mac": "E8:22:33:44:55:01",
+    "ring_name": "UH_E82233445501",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": "BATTERY_DEAD",
+    "dead_confirm_passes": 1,
+    "discharge_connect_failures": 2
+  },
+  "5": {
+    "serial_number": "RP-CH3-P18-WD-PA10-0005105",
+    "product": "PRO",
+    "ring_mac": "E9:22:33:44:55:05",
+    "ring_name": "UH_E92233445505",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "8": {
+    "serial_number": "RP-CH2-P18-WD-PR08-0005108",
+    "product": "PRO",
+    "ring_mac": "EA:22:33:44:55:08",
+    "ring_name": "UH_EA2233445508",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "20": {
+    "serial_number": "RP-CH3-P18-WD-PG07-0005120",
+    "product": "PRO",
+    "ring_mac": "EB:22:33:44:55:20",
+    "ring_name": "UH_EB2233445520",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "30": {
+    "serial_number": "RP-CH3-P18-WD-PA09-0005130",
+    "product": "PRO",
+    "ring_mac": "EC:22:33:44:55:30",
+    "ring_name": "UH_EC2233445530",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 1
+  }
+}

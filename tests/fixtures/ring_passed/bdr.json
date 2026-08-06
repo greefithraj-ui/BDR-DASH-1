@@ -1,0 +1,62 @@
+{
+  "saved_at": "2026-08-01T10:00:00.000000+05:30",
+  "slots": {
+    "2": {
+      "state": "PASSED",
+      "ring_mac": "E1:22:33:44:55:11",
+      "ring_name": "UH_E12233445511",
+      "serial_number": "RP-CH3-P18-WD-PA10-0001111",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 0,
+      "charging_current_ma": 0.0,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T08:00:00.000000+05:30",
+          98,
+          -0.273,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    },
+    "7": {
+      "state": "PASSED",
+      "ring_mac": "E2:22:33:44:55:22",
+      "ring_name": "UH_E22233445522",
+      "serial_number": "RA-CH3-LFK-W1-AG07-0002222",
+      "product": "AIR",
+      "firmware_version": "02.01.33.03",
+      "battery_current": 0,
+      "charging_current_ma": 0.0,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T07:30:00.000000+05:30",
+          99,
+          0.117,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    },
+    "11": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "E3:22:33:44:55:33",
+      "ring_name": "UH_E32233445533",
+      "serial_number": "RP-CH3-P18-WD-PG07-0003333",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 60,
+      "charging_current_ma": 8.5,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:50:00.000000+05:30",
+          60,
+          8.5,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    }
+  }
+}

@@ -954,22 +954,38 @@ async function ringsCheckChanges() {
 let dvBarChart = null;
 let dvCurrentCategory = null;
 let dvCurrentSku = null;
+let dvDrillChart = null;
+
+const DV_CATEGORIES = [
+  { name: 'AIR',           color: '#38BDF8', cardClass: 'air-card' },
+  { name: 'PRO',           color: '#6366F1', cardClass: 'pro-card' },
+  { name: 'RT CONVERSION', color: '#F59E0B', cardClass: 'rt-conversion-card' },
+  { name: 'WABI SABI',     color: '#8B5CF6', cardClass: 'wabi-sabi-card' },
+  { name: 'LUX',           color: '#EAB308', cardClass: 'lux-card' }
+];
+
+function dvCategoryColor(catName) {
+  const def = DV_CATEGORIES.find(c => c.name === catName);
+  return def ? def.color : '#94A3B8';
+}
 
 function classifySerial(serial) {
   if (!serial || serial === '--' || serial === 'N/A') return null;
   const parts = serial.split('-');
-  if (parts.length < 3) return { category: 'PRODUCTION', sku: '--' };
   const catCode = (parts[2] || '').toUpperCase();
-  const sku = parts.length >= 5 ? (parts[4] || '--').toUpperCase() : '--';
-  const rtPatterns = ['IRR', 'IR3', 'IR4', 'CR3', 'CR4'];
-  const wabiPatterns = ['IW1', 'IW2', 'IW3', 'CW3', 'CW4'];
-  if (rtPatterns.includes(catCode)) return { category: 'RT CONVERSION', sku };
-  if (wabiPatterns.includes(catCode)) return { category: 'WABI SABI', sku };
-  return { category: 'PRODUCTION', sku };
+  const modelCode = (parts[4] || '').toUpperCase();
+
+  if (['IW1', 'IW2', 'IW3'].includes(catCode)) return { category: 'WABI SABI', sku: modelCode || '--' };
+  if (['IR2', 'IR3', 'IR4'].includes(catCode)) return { category: 'RT CONVERSION', sku: modelCode || '--' };
+  if (modelCode.startsWith('L')) return { category: 'LUX', sku: modelCode };
+  if ((parts[0] || '').toUpperCase() === 'RA') return { category: 'AIR', sku: modelCode || '--' };
+  if ((parts[0] || '').toUpperCase() === 'RP') return { category: 'PRO', sku: modelCode || '--' };
+  return null;
 }
 
 function buildDataVizData() {
-  const categories = { 'PRODUCTION': { count: 0, skus: {} }, 'RT CONVERSION': { count: 0, skus: {} }, 'WABI SABI': { count: 0, skus: {} } };
+  const categories = {};
+  DV_CATEGORIES.forEach(c => { categories[c.name] = { count: 0, skus: {} }; });
   ringsData.forEach(s => {
     const sn = (s.serial_number || '').toString().trim();
     const cls = classifySerial(sn);
@@ -1038,19 +1054,19 @@ function renderDvMainView(data) {
     if (content) {
       content.innerHTML = '';
     }
+    if (dvDrillChart) { try { dvDrillChart.destroy(); } catch (e) {} dvDrillChart = null; }
     renderDvSummaryCards(data);
     renderDvCharts(data);
 
-    const order = ['PRODUCTION', 'RT CONVERSION', 'WABI SABI'];
-    const colors = { 'PRODUCTION': '#3B82F6', 'RT CONVERSION': '#F59E0B', 'WABI SABI': '#8B5CF6' };
-    order.forEach(cat => {
+    DV_CATEGORIES.forEach(catDef => {
+      const cat = catDef.name;
       const d = data[cat];
       if (!d || d.count === 0) return;
       const btn = document.createElement('button');
       btn.className = 'floorplan-toggle';
-      btn.style.cssText = 'padding:10px 20px;font-size:13px;font-weight:700;border-color:' + colors[cat] + ';color:' + colors[cat] + ';';
-      btn.innerHTML = cat + ' <span style="background:' + colors[cat] + ';color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;margin-left:6px;">' + d.count + '</span>';
-      btn.onclick = () => renderDvCategory(d, cat, colors[cat], data);
+      btn.style.cssText = 'padding:10px 20px;font-size:13px;font-weight:700;border-color:' + catDef.color + ';color:' + catDef.color + ';';
+      btn.innerHTML = cat + ' <span style="background:' + catDef.color + ';color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;margin-left:6px;">' + d.count + '</span>';
+      btn.onclick = () => renderDvCategory(d, cat, catDef.color, data);
       if (nav) nav.appendChild(btn);
     });
   } catch (e) {
@@ -1088,7 +1104,7 @@ function renderDvCategory(catData, catName, color, allData) {
         ).join('') + '</div>';
     }
 
-    renderDvSummaryCards(allData);
+    renderDvSummaryCards(allData, catName);
     renderDvCharts(allData, catData.skus || {});
   } catch (e) {
     console.warn('Error in renderDvCategory:', e);
@@ -1106,31 +1122,210 @@ function renderDvSku(sku, count, color, catName) {
 }
 
 
-function renderDvSummaryCards(data) {
+function renderDvSummaryCards(data, activeCategory) {
   const container = document.getElementById('dv-summary-cards');
-  const order = ['PRODUCTION', 'RT CONVERSION', 'WABI SABI'];
-  const cardClasses = { 'PRODUCTION': 'production-card', 'RT CONVERSION': 'rt-conversion-card', 'WABI SABI': 'wabi-sabi-card' };
   const total = Object.values(data).reduce((s, d) => s + d.count, 0);
-  container.innerHTML = '<div class="kpi-card total-serials-card">' +
+  container.innerHTML = '<div class="kpi-card total-serials-card' + (!activeCategory ? ' active' : '') + '" role="button" tabindex="0" title="Back to all categories" onclick="renderDvMainView(buildDataVizData())">' +
     '<div class="card-header"><span class="color-indicator"></span><span class="card-label">TOTAL SERIALS</span></div>' +
     '<div class="card-body"><h1 class="metric-value">' + total + '</h1></div>' +
     '<div class="card-footer"><span class="sub-text">All categories</span></div>' +
     '</div>' +
-    order.map(cat => {
-      const d = data[cat];
+    DV_CATEGORIES.map(catDef => {
+      const d = data[catDef.name];
       if (!d || d.count === 0) return '';
       const pct = total > 0 ? (d.count / total * 100).toFixed(1) : 0;
-      return '<div class="kpi-card ' + cardClasses[cat] + '">' +
-        '<div class="card-header"><span class="color-indicator"></span><span class="card-label">' + cat + '</span></div>' +
+      const active = activeCategory === catDef.name ? ' active' : '';
+      return '<div class="kpi-card ' + catDef.cardClass + active + '" role="button" tabindex="0" title="Drill into ' + catDef.name + '" onclick="renderDvKpiDrilldown(\'' + catDef.name.replace(/'/g, "\\'") + '\',\'' + catDef.color + '\')">' +
+        '<div class="card-header"><span class="color-indicator"></span><span class="card-label">' + catDef.name + '</span></div>' +
         '<div class="card-body"><h1 class="metric-value">' + d.count + '</h1></div>' +
         '<div class="card-footer"><span class="sub-text">' + Object.keys(d.skus).length + ' SKUs | ' + pct + '%</span></div>' +
         '</div>';
     }).join('');
 }
 
+function dvDrillCategorySerials(catName) {
+  const rows = [];
+  (ringsData || []).forEach(r => {
+    const sn = String(r.serial_number || '').trim();
+    const cls = classifySerial(sn);
+    if (cls && cls.category === catName) {
+      rows.push(r);
+    }
+  });
+  return rows;
+}
+
+function dvDrillSlotFor(machineName, slotKey) {
+  if (!machineName || slotKey == null) return null;
+  const md = ALL_MACHINE_DATA || {};
+  const direct = md[machineName];
+  if (direct && direct.slots) return direct.slots[String(slotKey)] || null;
+  const norm = String(machineName).toLowerCase();
+  for (const key of Object.keys(md)) {
+    if (key.toLowerCase() === norm && md[key].slots) {
+      return md[key].slots[String(slotKey)] || null;
+    }
+  }
+  return null;
+}
+
+function dvDrillSlotState(ringRec) {
+  const s = (ringRec.state || '').toUpperCase();
+  if (s === 'BDR_RUNNING') return 'RUNNING';
+  if (s === 'PASSED' || s === 'PASS') return 'PASSED';
+  if (s === 'FAILED') return 'FAILED';
+  const sn = String(ringRec.serial_number || '').trim();
+  if (sn && sn !== '--' && sn !== 'N/A') return 'ASSIGNED';
+  return 'EMPTY';
+}
+
+function renderDvKpiDrilldown(catName, color) {
+  try {
+    const data = buildDataVizData();
+    const catData = data && data[catName];
+    if (!catData || catData.count === 0) {
+      console.warn('renderDvKpiDrilldown: no data for category ' + catName);
+      return;
+    }
+    dvCurrentCategory = catName;
+    dvCurrentSku = null;
+
+    const breadcrumb = document.getElementById('dv-breadcrumb');
+    if (breadcrumb) {
+      breadcrumb.innerHTML = '<span style="cursor:pointer;color:var(--muted);" onclick="renderDvMainView(buildDataVizData())">Categories</span> <span style="color:var(--muted);">/</span> <span style="font-weight:600;color:' + color + ';">' + catName + ' <span style="color:var(--muted);font-weight:500;">Ring Status</span></span>';
+    }
+    const nav = document.getElementById('dv-category-nav');
+    if (nav) nav.innerHTML = '';
+    const content = document.getElementById('dv-category-content');
+    if (content) content.innerHTML = '';
+
+    const serials = dvDrillCategorySerials(catName);
+    const total = serials.length;
+    const counts = { TOTAL: total, RUNNING: 0, PASSED: 0, FAILED: 0, ASSIGNED: 0 };
+    const statusColors = { RUNNING: '#3B82F6', PASSED: '#22C55E', FAILED: '#EF4444', ASSIGNED: '#F59E0B' };
+    const rows = serials.map(r => {
+      const st = dvDrillSlotState(r);
+      if (counts[st] != null) counts[st]++;
+      const slotData = dvDrillSlotFor(r.file, r.slot);
+      const workouts = slotData ? calculateCompletedCycleWorkouts(slotData) : [];
+      const avgBdr = slotData ? getSlotAvgBdr(slotData, workouts) : null;
+      const lastBatt = slotData && slotData.battery_current != null ? slotData.battery_current : null;
+      return {
+        serial: String(r.serial_number || '--'),
+        machine: String(r.file || '--'),
+        slot: String(r.slot == null ? '--' : r.slot),
+        state: st,
+        stateRaw: String(r.state || '--'),
+        workouts: workouts,
+        avgBdr: avgBdr,
+        battery: lastBatt,
+        hasCycle: !!slotData
+      };
+    });
+
+    const chip = (label, val, chipColor) =>
+      '<div class="dv-drill-chip" style="--drill-chip-accent:' + chipColor + ';"><span class="dv-drill-chip-label">' + label + '</span><span class="dv-drill-chip-value">' + val + '</span></div>';
+
+    const statusRow = '<div class="dv-drill-status-row">' +
+      chip('Total', counts.TOTAL, color) +
+      chip('Running', counts.RUNNING, statusColors.RUNNING) +
+      chip('Passed', counts.PASSED, statusColors.PASSED) +
+      chip('Failed', counts.FAILED, statusColors.FAILED) +
+      chip('Assigned', counts.ASSIGNED, statusColors.ASSIGNED) +
+      '</div>';
+
+    const badgeCls = st => st === 'RUNNING' ? 'ok' : st === 'PASSED' ? 'pass' : st === 'FAILED' ? 'danger' : 'neutral';
+
+    const tableRows = rows.map(r =>
+      '<tr>' +
+      '<td style="font-family:var(--f-mono);font-weight:600;">' + escapeHtml(r.serial) + '</td>' +
+      '<td>' + escapeHtml(r.machine) + '</td>' +
+      '<td>' + escapeHtml(r.slot) + '</td>' +
+      '<td><span class="badge ' + badgeCls(r.state) + '">' + r.state + '</span></td>' +
+      '<td>' + r.workouts.length + '</td>' +
+      '<td>' + (r.avgBdr != null ? r.avgBdr.toFixed(2) : '<span class="dv-drill-muted">—</span>') + '</td>' +
+      '<td>' + (r.battery != null ? r.battery.toFixed(2) + ' mA' : '<span class="dv-drill-muted">—</span>') + '</td>' +
+      '</tr>'
+    ).join('');
+
+    const serialTable =
+      '<div class="section-label" style="margin-bottom:8px;">Serials — Machine &amp; Slot</div>' +
+      '<div class="dv-drill-table-wrap">' +
+      '<table class="ca-table dv-drill-table">' +
+      '<thead><tr><th>Serial</th><th>Machine</th><th>Slot</th><th>Status</th><th>Workouts</th><th>Avg BDR</th><th>Current</th></tr></thead>' +
+      '<tbody>' + (tableRows || '<tr><td colspan="7" style="text-align:center;color:var(--muted);">No serials in this category</td></tr>') + '</tbody>' +
+      '</table></div>';
+
+    const cycleSection =
+      '<div class="section-label" style="margin-bottom:8px;">Cycle Analysis</div>' +
+      '<div class="dv-drill-cycle-grid">' +
+      '<div class="dv-drill-chart-box"><div class="dv-drill-chart-title">Workouts per Serial</div><div id="dv-drill-chart-1" style="height:220px;"></div></div>' +
+      '<div class="dv-drill-chart-box"><div class="dv-drill-chart-title">Avg BDR per Serial</div><div id="dv-drill-chart-2" style="height:220px;"></div></div>' +
+      '</div>';
+
+    content.innerHTML = statusRow + serialTable + cycleSection;
+
+    renderDvSummaryCards(data, catName);
+    renderDvCharts(data);
+
+    setTimeout(() => renderDvDrillCharts(rows, color), 30);
+  } catch (e) {
+    console.warn('Error in renderDvKpiDrilldown:', e);
+  }
+}
+
+function renderDvDrillCharts(rows, color) {
+  try {
+    const el1 = document.getElementById('dv-drill-chart-1');
+    const el2 = document.getElementById('dv-drill-chart-2');
+    const themeMode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    const withCycle = rows.filter(r => r.hasCycle);
+    const sortedByWorkouts = withCycle.slice().sort((a, b) => b.workouts.length - a.workouts.length).slice(0, 20);
+    const sortedByBdr = withCycle.slice().sort((a, b) => (b.avgBdr || 0) - (a.avgBdr || 0)).slice(0, 20);
+
+    if (el1) {
+      if (dvDrillChart) { dvDrillChart.destroy(); dvDrillChart = null; }
+      if (sortedByWorkouts.length === 0) {
+        el1.innerHTML = '<div class="ar-empty">No cycle data for this category</div>';
+      } else {
+        dvDrillChart = new ApexCharts(el1, {
+          chart: { type: 'bar', height: 220, toolbar: { show: false } },
+          series: [{ name: 'Workouts', data: sortedByWorkouts.map(r => r.workouts.length) }],
+          xaxis: { categories: sortedByWorkouts.map(r => r.serial), labels: { style: { fontSize: '10px' } } },
+          colors: [color],
+          plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } },
+          legend: { show: false },
+          grid: getApexGrid(),
+          theme: { mode: themeMode },
+          tooltip: { y: { formatter: v => v + ' workouts' } }
+        });
+        dvDrillChart.render();
+      }
+    }
+    if (el2) {
+      if (sortedByBdr.length === 0) {
+        el2.innerHTML = '<div class="ar-empty">No cycle data for this category</div>';
+      } else {
+        const c2 = new ApexCharts(el2, {
+          chart: { type: 'bar', height: 220, toolbar: { show: false } },
+          series: [{ name: 'Avg BDR', data: sortedByBdr.map(r => r.avgBdr != null ? r.avgBdr : 0) }],
+          xaxis: { categories: sortedByBdr.map(r => r.serial), labels: { style: { fontSize: '10px' } } },
+          colors: [color],
+          plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } },
+          legend: { show: false },
+          grid: getApexGrid(),
+          theme: { mode: themeMode },
+          tooltip: { y: { formatter: v => v + ' %/hr' } }
+        });
+        c2.render();
+      }
+    }
+  } catch (e) {
+    console.warn('Error in renderDvDrillCharts:', e);
+  }
+}
+
 function renderDvCharts(data, skuData) {
-  const order = ['PRODUCTION', 'RT CONVERSION', 'WABI SABI'];
-  const colors = { 'PRODUCTION': '#3B82F6', 'RT CONVERSION': '#F59E0B', 'WABI SABI': '#8B5CF6' };
   const labels = [];
   const values = [];
   const barColors = [];
@@ -1140,12 +1335,16 @@ function renderDvCharts(data, skuData) {
     entries.forEach(([sku, count]) => {
       labels.push(sku);
       values.push(count);
-      barColors.push(dvCurrentCategory ? colors[dvCurrentCategory] || '#3B82F6' : '#3B82F6');
+      barColors.push(dvCurrentCategory ? dvCategoryColor(dvCurrentCategory) : '#38BDF8');
     });
   } else {
-    order.forEach(cat => {
-      const d = data[cat];
-      if (d && d.count > 0) { labels.push(cat); values.push(d.count); barColors.push(colors[cat]); }
+    DV_CATEGORIES.forEach(catDef => {
+      const d = data[catDef.name];
+      if (d && d.count > 0) {
+        labels.push(catDef.name);
+        values.push(d.count);
+        barColors.push(catDef.color);
+      }
     });
   }
 
@@ -6781,3 +6980,93 @@ async function diagBtFixPairingPopupPersistent() {
     diagShowResults({ error: err.message });
   }
 }
+
+/* =========================================================================
+   COMMAND PALETTE LOGIC
+   ========================================================================= */
+
+function toggleCommandPalette() {
+    const overlay = document.getElementById('command-palette-overlay');
+    if (!overlay) return;
+    const isVisible = overlay.classList.contains('visible');
+    
+    if (isVisible) {
+        overlay.classList.remove('visible');
+    } else {
+        overlay.classList.add('visible');
+        const input = document.getElementById('cmd-palette-input');
+        if (input) {
+            input.value = '';
+            setTimeout(() => input.focus(), 50);
+            filterCommandPalette();
+        }
+    }
+}
+
+function filterCommandPalette() {
+    const input = document.getElementById('cmd-palette-input');
+    const resultsContainer = document.getElementById('cmd-palette-results');
+    if (!input || !resultsContainer) return;
+    
+    const query = input.value.toLowerCase().trim();
+    resultsContainer.innerHTML = '';
+    
+    let results = [];
+    
+    // Commands
+    results.push({ type: 'command', title: 'Open Operations Queue', sub: 'Workspace', action: () => switchView('bdr'), icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>' });
+    results.push({ type: 'command', title: 'Open Machine Workspace', sub: 'Workspace', action: () => switchView('rings'), icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' });
+    
+    // Filter and Render
+    const filtered = query ? results.filter(r => r.title.toLowerCase().includes(query) || r.sub.toLowerCase().includes(query)) : results;
+    
+    if (filtered.length === 0) {
+        resultsContainer.innerHTML = '<div style="padding:16px; text-align:center; color:var(--muted); font-size:12px;">No results found</div>';
+        return;
+    }
+    
+    filtered.forEach((r, idx) => {
+        const div = document.createElement('div');
+        div.className = 'cmd-result-item' + (idx === 0 ? ' selected' : '');
+        div.innerHTML = `
+            <div class="cmd-result-icon">${r.icon || ''}</div>
+            <div class="cmd-result-content">
+                <div class="cmd-result-title">${r.title}</div>
+                <div class="cmd-result-subtitle">${r.sub}</div>
+            </div>
+        `;
+        div.onclick = () => {
+            toggleCommandPalette();
+            r.action();
+        };
+        resultsContainer.appendChild(div);
+    });
+}
+
+// Global Keyboard Listeners
+document.addEventListener('keydown', (e) => {
+    // Ctrl+K
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        toggleCommandPalette();
+    }
+    
+    // ESC
+    if (e.key === 'Escape') {
+        const overlay = document.getElementById('command-palette-overlay');
+        if (overlay && overlay.classList.contains('visible')) {
+            toggleCommandPalette();
+        }
+    }
+    
+    // Enter (execute selected)
+    if (e.key === 'Enter') {
+        const overlay = document.getElementById('command-palette-overlay');
+        if (overlay && overlay.classList.contains('visible')) {
+            const selected = document.querySelector('.cmd-result-item.selected');
+            if (selected) {
+                selected.click();
+            }
+        }
+    }
+});

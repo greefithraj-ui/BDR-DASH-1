@@ -101,6 +101,22 @@ def is_available():
     return _pg_available
 
 
+def wait_for_pg(max_attempts=15, delay=2):
+    for attempt in range(max_attempts):
+        try:
+            if is_available():
+                if attempt > 0:
+                    print(f"[pg] PostgreSQL ready after {attempt} retries.")
+                return True
+        except RuntimeError:
+            pass
+        if attempt < max_attempts - 1:
+            print(f"[pg] Waiting for PostgreSQL... (attempt {attempt+1}/{max_attempts})")
+            time.sleep(delay)
+    print("[pg] PostgreSQL did not become available in time.")
+    return False
+
+
 def get_connection():
     """Return a connection from the pool (reuses TCP connections)."""
     if not HAS_PSYCOPG2:
@@ -793,11 +809,27 @@ def init_archive_table(conn):
                 snapshots INTEGER,
                 total_cycles INTEGER,
                 completed_cycles INTEGER,
-                start_time REAL,
-                last_update REAL,
+                start_time DOUBLE PRECISION,
+                last_update DOUBLE PRECISION,
                 saved_at VARCHAR(100),
-                content JSONB,
                 created_at TIMESTAMP DEFAULT NOW(),
+                date VARCHAR(20),
+                time VARCHAR(20),
+                slot INTEGER,
+                battery_current REAL,
+                firmware_version VARCHAR(100),
+                ring_mac VARCHAR(50),
+                ring_name VARCHAR(100),
+                avg_bdr DOUBLE PRECISION,
+                avg_bdr_is_stale BOOLEAN,
+                avg_bdr_is_estimated BOOLEAN,
+                stored_avg_bdr DOUBLE PRECISION,
+                inter_cycle_avg_bdr DOUBLE PRECISION,
+                test_start DOUBLE PRECISION,
+                phase VARCHAR(100),
+                cycle INTEGER,
+                completed_workouts INTEGER,
+                file_path VARCHAR(500),
                 UNIQUE(serial_number, machine, saved_at)
             )
         """)
@@ -815,15 +847,24 @@ def ingest_archive_to_pg(record):
                 cur.execute("""
                     INSERT INTO archive_entries (
                         serial_number, serial_lower, machine, state, machine_avg_bdr, bdr,
-                        snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, content
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at,
+                        date, time, slot, battery_current, firmware_version, ring_mac, ring_name,
+                        avg_bdr, avg_bdr_is_stale, avg_bdr_is_estimated, stored_avg_bdr,
+                        inter_cycle_avg_bdr, test_start, phase, cycle, completed_workouts
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s
+                    )
                     ON CONFLICT (serial_number, machine, saved_at) DO NOTHING
                 """, (
                     record.get("serial_number"),
                     str(record.get("serial_number", "")).lower(),
                     record.get("machine"),
                     record.get("state"),
-                    record.get("machine_avg_bdr"),
+                    record.get("machine_avg_bdr") or record.get("avg_bdr"),
                     record.get("bdr"),
                     record.get("snapshots"),
                     record.get("total_cycles"),
@@ -831,7 +872,22 @@ def ingest_archive_to_pg(record):
                     record.get("start_time"),
                     record.get("last_update"),
                     record.get("saved_at"),
-                    json.dumps(record) if record else "{}"
+                    record.get("date"),
+                    record.get("time"),
+                    record.get("slot"),
+                    record.get("battery_current"),
+                    record.get("firmware_version"),
+                    record.get("ring_mac"),
+                    record.get("ring_name"),
+                    record.get("avg_bdr"),
+                    record.get("avg_bdr_is_stale", False),
+                    record.get("avg_bdr_is_estimated", False),
+                    record.get("stored_avg_bdr"),
+                    record.get("inter_cycle_avg_bdr"),
+                    record.get("test_start"),
+                    record.get("phase"),
+                    record.get("cycle"),
+                    record.get("completed_workouts"),
                 ))
             pg_conn.commit()
             return True
@@ -858,19 +914,23 @@ def search_archive_in_pg(serial_keys):
         pg_conn = get_connection()
         try:
             with pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-                # Remove DISTINCT ON so it returns ALL historical snapshots for the serials
                 query = """
-                    SELECT content
+                    SELECT serial_number, machine, state, machine_avg_bdr, bdr,
+                           snapshots, total_cycles, completed_cycles, start_time,
+                           last_update, saved_at, date, time, slot, battery_current,
+                           firmware_version, ring_mac, ring_name, avg_bdr,
+                           avg_bdr_is_stale, avg_bdr_is_estimated, stored_avg_bdr,
+                           inter_cycle_avg_bdr, test_start, phase, cycle,
+                           completed_workouts, file_path
                     FROM archive_entries
                     WHERE serial_lower = ANY(%s)
                     ORDER BY serial_lower, machine, saved_at DESC
                 """
                 cur.execute(query, (serial_keys,))
                 rows = cur.fetchall()
-                # Group rows by (serial_lower, machine)
                 grouped_rows = {}
                 for row in rows:
-                    rec = row["content"]
+                    rec = dict(row)
                     if not rec: continue
                     s_lower = str(rec.get("serial_number", "")).lower()
                     machine = rec.get("machine", "")
@@ -879,11 +939,9 @@ def search_archive_in_pg(serial_keys):
                         grouped_rows[combo_key] = []
                     grouped_rows[combo_key].append(rec)
                 
-                # Process each group
                 for combo_key, recs in grouped_rows.items():
                     s_lower, machine = combo_key
                     
-                    # Find the best historical BDR record
                     best_bdr_rec = None
                     for r in recs:
                         avg = r.get("avg_bdr")
@@ -894,7 +952,6 @@ def search_archive_in_pg(serial_keys):
                     for i, rec in enumerate(recs):
                         row_type = "latest" if i == 0 else "history"
                         
-                        # Apply fallback logic to "latest" if it's stale/missing data
                         is_stale = rec.get("avg_bdr_is_stale", False) or rec.get("avg_bdr") is None or rec.get("avg_bdr") == 0.0
                         
                         final_avg = rec.get("avg_bdr")
@@ -914,8 +971,6 @@ def search_archive_in_pg(serial_keys):
                             final_workouts = best_bdr_rec.get("completed_workouts")
                             final_stale = False
                             
-                            # Also copy over state if the current one is blank or just running,
-                            # but let's stick to BDR logic first.
                             if not str(rec.get("state", "")).strip():
                                 hs = str(best_bdr_rec.get("state", ""))
                                 if hs and "bdr" not in hs.lower() and hs.strip():

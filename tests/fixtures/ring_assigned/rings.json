@@ -1,0 +1,36 @@
+{
+  "9": {
+    "serial_number": "RP-CH3-P18-WD-PG07-0009000",
+    "product": "PRO",
+    "ring_mac": "E6:22:33:44:55:99",
+    "ring_name": "UH_E62233445599",
+    "state": "ASSIGNED",
+    "queued_at": "2026-08-01T09:58:30.000000+05:30",
+    "error": null,
+    "firmware_version": "05.24.34.52",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "QUEUED"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  },
+  "10": {
+    "serial_number": "RA-CH3-LFK-W1-AG07-0001010",
+    "product": "AIR",
+    "ring_mac": "E7:22:33:44:55:10",
+    "ring_name": "UH_E72233445510",
+    "state": "BDR_RUNNING",
+    "queued_at": null,
+    "error": null,
+    "firmware_version": "02.01.33.03",
+    "hardware_version": null,
+    "step_statuses": {
+      "BDR_TEST": "IN_PROGRESS"
+    },
+    "dead_state": null,
+    "dead_confirm_passes": 0,
+    "discharge_connect_failures": 0
+  }
+}

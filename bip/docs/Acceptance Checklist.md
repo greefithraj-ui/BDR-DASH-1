@@ -1,0 +1,21 @@
+# Phase 0 Acceptance Checklist
+
+- [x] `bip/` created as a standalone project.
+- [x] Existing BDR Dashboard files were not intentionally modified.
+- [x] Existing BIC Collector files were not intentionally modified.
+- [x] No database files or schemas were changed.
+- [x] Frontend stack scaffolded with React 18, TypeScript, Vite, React Router, TanStack Query, Zustand, and Tailwind CSS.
+- [x] Backend stack scaffolded with FastAPI, Pydantic, and Uvicorn.
+- [x] `/api/health` returns the required response shape.
+- [x] All requested routes are registered.
+- [x] Every route renders only `Coming Soon`.
+- [x] Sidebar navigation architecture is present.
+- [x] Header placeholder architecture is present.
+- [x] Provider architecture is present.
+- [x] State stores contain only shell state.
+- [x] Design-system component boundaries are present.
+- [x] Authentication is an abstraction only.
+- [x] Database and repository layers are abstractions only.
+- [x] No SQL or queries were added.
+- [x] Documentation was generated.
+- [x] Phase 1 has not been started.

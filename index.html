@@ -16,6 +16,25 @@
 <body>
 <!-- React mount point (disabled until migration begins) -->
 <!-- <div id="react-root"></div> -->
+<div class="mes-app-layout">
+    <div class="mes-sidebar">
+        <button class="mes-sidebar-item active" onclick="switchView('bdr')" title="Operations Queue">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+        </button>
+        <button class="mes-sidebar-item" onclick="switchView('rings')" title="Machine Workspace">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </button>
+        <button class="mes-sidebar-item" onclick="switchView('old-data')" title="Serial Timeline">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </button>
+        <button class="mes-sidebar-item" onclick="switchView('data-viz')" title="Analytics">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        </button>
+        <button class="mes-sidebar-item" onclick="switchView('diagnostics')" title="Diagnostics">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
+        </button>
+    </div>
+    <div class="mes-workspace-container">
 <div class="container">
     <header style="display:flex;align-items:center;justify-content:space-between;">
         <div class="title-area header">
@@ -196,317 +215,477 @@
         <p style="color: var(--muted); font-size: 12px; margin: 12px 0 0;">Data auto-loads from API server or pick a folder as fallback</p>
     </div>
 
-    <div id="dashboard-content" style="display: none; flex-direction: column; gap: 16px; flex-grow: 1;">
-        <div id="machine-selector" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-            <div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:4px 10px;">
-                <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);font-weight:600;">Total Machines</span>
-                <span id="kpi-aqc-count" style="font-size:18px;font-weight:700;color:var(--text);line-height:1;">0</span>
+    <!-- ── Operations Command Center Workstation (Operator Work Queue) ── -->
+    <div id="dashboard-content" class="mes-workspace-body" style="display: none;">
+        <!-- Top Command Strip & Command Palette Trigger -->
+        <div id="machine-selector" class="ops-command-bar">
+            <div class="ops-command-left">
+                <div class="ops-machine-badge">
+                    <span class="label">Total Machines</span>
+                    <span id="kpi-aqc-count" class="val">0</span>
+                </div>
+                <div id="machine-buttons" style="display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; padding-bottom: 2px;"></div>
             </div>
-            <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600;">Machine:</span>
-            <div id="machine-buttons" style="display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; padding-bottom: 4px;"></div>
 
-            <div id="bulk-charger-controls" style="display:flex;gap:6px;align-items:center;"></div>
-            <div class="sn-search-wrapper">
+            <div class="ops-command-right">
+                <div id="bulk-charger-controls" style="display:flex;gap:6px;align-items:center;"></div>
+                <div class="sn-search-wrapper">
+                    <div class="sn-search-icon">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"/>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                    </div>
+                    <input type="text" id="serial-search" class="sn-search-input" placeholder="COMMAND PALETTE (Ctrl+K or SEARCH SERIAL)" onclick="toggleCommandPalette()" readonly style="cursor:pointer;"/>
+                    <button class="sn-scan-btn" id="sn-scan-btn" onclick="toggleCommandPalette()">SCAN</button>
+                </div>
+                <button class="btn-5" id="export-serial-btn" style="display:none;" onclick="exportSerialNumbers()" title="Export Serials">
+                    <div class="shine"></div>
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 4v9m0 0l-4-4m4 4l4-4M5 18h14"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Interactive Ring Lifecycle Pipeline Bar -->
+        <div class="ops-heatmap-card" style="padding:10px 16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                <div class="ops-section-title" style="margin:0;">Ring Lifecycle Pipeline</div>
+                <div class="pipeline-deck">
+                    <button class="pipeline-stage-btn active"><span>Assigned</span> <span style="font-family:var(--f-mono);opacity:0.8;">(12)</span></button>
+                    <button class="pipeline-stage-btn"><span>Inspection Started</span> <span style="font-family:var(--f-mono);opacity:0.8;">(28)</span></button>
+                    <button class="pipeline-stage-btn"><span>Passed / Failed</span> <span style="font-family:var(--f-mono);opacity:0.8;">(18)</span></button>
+                    <button class="pipeline-stage-btn" style="border-color:rgba(227,45,81,0.4);color:var(--danger);"><span>Pending Removal</span> <span style="font-family:var(--f-mono);font-weight:800;">(4 🔴 OVERDUE)</span></button>
+                    <button class="pipeline-stage-btn"><span>Removed</span> <span style="font-family:var(--f-mono);opacity:0.8;">(2)</span></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- DOMINANT INTERFACE: Prioritized Operational Work Queue Console -->
+        <div id="spotlight-section" class="op-queue-container" style="display: flex;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div class="ops-section-title" style="margin:0;">Prioritized Operational Work Queue</div>
+                    <span class="priority-tag critical">4 Actionable Items</span>
+                </div>
+                <div id="spotlight-insight" style="font-size: 11px; color: var(--muted); font-weight:700; font-family:var(--f-mono);">0 anomalies detected</div>
+            </div>
+
+            <!-- Active Focal Work Queue Item Card -->
+            <div class="op-queue-primary-card critical">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                            <span class="priority-tag critical">🔴 CRITICAL PRIORITY</span>
+                            <span style="font-size:11px;font-family:var(--f-mono);color:var(--muted);">SLA BREACH DETECTED</span>
+                        </div>
+                        <h2 style="margin:0;font-size:18px;font-weight:800;font-family:var(--f-mono);color:var(--text);">RING #BDR-88421 <span style="font-size:13px;font-weight:500;color:var(--muted);">(SN: 9842104)</span></h2>
+                        <div style="font-size:12px;color:var(--text2);margin-top:4px;display:flex;gap:16px;flex-wrap:wrap;font-weight:600;">
+                            <span>Location: <strong style="color:var(--blue);">Machine M-02 | Bay B | Slot 14</strong></span>
+                            <span>Dwell Time: <strong style="color:var(--danger);font-family:var(--f-mono);">14m 22s (SLA Target: &lt;10m)</strong></span>
+                            <span>Stage: <strong style="color:var(--text);">Inspection Completed (PASSED)</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Complete Action & Next Item Button -->
+                    <button class="op-queue-action-btn" onclick="const p=document.getElementById('detail-panel');if(p)p.style.display='block';">
+                        <span>COMPLETE ACTION: REMOVE RING</span>
+                        <span style="font-size:11px;opacity:0.9;font-weight:600;">&rarr; NEXT (3 LEFT)</span>
+                    </button>
+                </div>
+
+                <!-- Downstream Machine & Operator Context -->
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;">
+                    <div>
+                        <span style="color:var(--muted);font-weight:700;display:block;margin-bottom:2px;">DOWNSTREAM MACHINE CONTEXT</span>
+                        <span style="color:var(--text);font-family:var(--f-mono);">Queue: 3 Rings Waiting | Est. Idle: 02m 45s | Next: Load #BDR-88430</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--muted);font-weight:700;display:block;margin-bottom:2px;">OPERATOR OWNERSHIP & ESCALATION</span>
+                        <span style="color:var(--text);font-family:var(--f-mono);">Assigned: Tech #402 (Line 1) | Escalation: Supervisor #104 (Ext: 4022)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dynamic Spotlight Grid Container -->
+            <div class="spotlight-grid" id="spotlight-grid"></div>
+        </div>
+
+        <!-- High-Density Telemetry KPI Bar -->
+        <div class="ops-kpi-bar">
+            <div class="ops-kpi-tile">
+                <div class="ops-kpi-header">
+                    <span class="ops-kpi-title">Active Slots</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg>
+                </div>
+                <div class="ops-kpi-num" id="kpi-total">0</div>
+                <div class="ops-kpi-sub">
+                    <span>Connected Fleet</span>
+                    <span class="bdr-kpi-pulse"></span>
+                </div>
+            </div>
+
+            <div class="ops-kpi-tile">
+                <div class="ops-kpi-header">
+                    <span class="ops-kpi-title">Avg Battery</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2"><path d="M6 7h11v10H6zM17 10h2v4h-2"/></svg>
+                </div>
+                <div class="ops-kpi-num" id="kpi-batt">0%</div>
+                <div class="ops-kpi-sub">
+                    <span>Fleet Charge</span>
+                    <span class="bdr-kpi-pulse"></span>
+                </div>
+            </div>
+
+            <div class="ops-kpi-tile">
+                <div class="ops-kpi-header">
+                    <span class="ops-kpi-title">Avg Fleet BDR</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><path d="M4 18l5-6 4 3 7-9"/></svg>
+                </div>
+                <div class="ops-kpi-num" id="kpi-anom">0</div>
+                <div class="ops-kpi-sub">
+                    <span>Discharge Rate</span>
+                    <span class="bdr-kpi-pulse"></span>
+                </div>
+            </div>
+
+            <div class="ops-kpi-tile">
+                <div class="ops-kpi-header">
+                    <span class="ops-kpi-title">Total Serials</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2"><path d="M8 7h8M8 12h8M8 17h5"/></svg>
+                </div>
+                <div class="ops-kpi-num" id="kpi-serials-raw">0</div>
+                <div class="ops-kpi-sub">
+                    <span>Logged Records</span>
+                    <button class="upload-btn" onclick="showFirmwareModal()" style="padding:2px 6px;font-size:10px;">Firmware</button>
+                </div>
+            </div>
+
+            <div class="ops-kpi-tile danger-state">
+                <div class="ops-kpi-header">
+                    <span class="ops-kpi-title" style="color:var(--danger);">Cross Duplicates</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><path d="M8 8h11v11H8zM5 5h11"/></svg>
+                </div>
+                <div class="ops-kpi-num" id="kpi-serials-dup" style="color:var(--danger);">0</div>
+                <div class="ops-kpi-sub">
+                    <span>Action Required</span>
+                    <button class="upload-btn" id="show-dup-btn" onclick="showDuplicatesModal()" style="padding:2px 6px;font-size:10px;background:var(--danger-bg);color:var(--danger);border-color:color-mix(in srgb, var(--danger) 30%, transparent);">Review</button>
+                </div>
+                <div id="duplicates-panel" style="display:none; margin-top:4px;"></div>
+            </div>
+        </div>
+
+        <!-- Secondary Support: Fleet Heatmap Matrix Workstation -->
+        <div class="ops-heatmap-card">
+            <div class="ops-heatmap-toolbar">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <div class="ops-section-title">Fleet Heatmap Matrix</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <button class="export-btn" id="export-fleet-summary-btn" style="border-color:var(--border);gap:6px;padding:4px 10px;" onclick="exportFleetSummary()">
+                            <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span style="font-size:11px;font-weight:600;">Export Fleet</span>
+                        </button>
+                        <button class="export-btn" id="export-qualified-btn" style="border-color:var(--border);gap:6px;padding:4px 10px;">
+                            <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span style="font-size:11px;font-weight:600;">Export Qualified</span>
+                        </button>
+                        <span id="qualified-count" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;background:var(--slot-pass-bg);color:var(--slot-pass-color);font-size:11px;font-weight:700;font-family:var(--f-mono);border:1px solid color-mix(in srgb, var(--slot-pass-color) 30%, transparent);">0</span>
+                    </div>
+                </div>
+
+                <!-- Heatmap Filter Chips -->
+                <div class="heatmap-filters" id="heatmap-filters" style="margin:0;">
+                    <button class="heatmap-filter" data-filter="slot-pass"><span class="fdot pick-color" style="background:#12f202" title="Click to change color"></span>Pass <input type="color" class="color-picker" data-target="slot-pass" value="#12f202"></button>
+                    <button class="heatmap-filter" data-filter="slot-ok"><span class="fdot pick-color" style="background:rgb(58, 142, 173)" title="Click to change color"></span>Normal <input type="color" class="color-picker" data-target="slot-ok" value="#02f2ba"></button>
+                    <button class="heatmap-filter" data-filter="slot-low-bdr"><span class="fdot pick-color" style="background:#0EA5E9" title="Click to change color"></span>Low BDR <input type="color" class="color-picker" data-target="slot-low-bdr" value="#0EA5E9"></button>
+                    <button class="heatmap-filter" data-filter="slot-high-bdr"><span class="fdot pick-color" style="background:#EC4899" title="Click to change color"></span>High BDR <input type="color" class="color-picker" data-target="slot-high-bdr" value="#EC4899"></button>
+                    <button class="heatmap-filter" data-filter="slot-sensor-issue"><span class="fdot pick-color" style="background:#14B8A6" title="Click to change color"></span>Sensor Issue <input type="color" class="color-picker" data-target="slot-sensor-issue" value="#14B8A6"></button>
+                    <button class="heatmap-filter" data-filter="slot-warn"><span class="fdot pick-color" style="background:#F59E0B" title="Click to change color"></span>Warning <input type="color" class="color-picker" data-target="slot-warn" value="#F59E0B"></button>
+                    <button class="heatmap-filter" data-filter="slot-danger"><span class="fdot pick-color" style="background:#DC2626" title="Click to change color"></span>Failure <input type="color" class="color-picker" data-target="slot-danger" value="#DC2626"></button>
+                    <button class="heatmap-filter" data-filter="slot-dead"><span class="fdot pick-color" style="background:#4F46E5" title="Click to change color"></span>Died <input type="color" class="color-picker" data-target="slot-dead" value="#4F46E5"></button>
+                    <button class="heatmap-filter" data-filter="slot-empty"><span class="fdot pick-color" style="background:#9CA3AF" title="Click to change color"></span>No Data <input type="color" class="color-picker" data-target="slot-empty" value="#9CA3AF"></button>
+                    <button class="heatmap-filter" data-filter="slot-na"><span class="fdot pick-color" style="background:#A0765F" title="Click to change color"></span>N/A <input type="color" class="color-picker" data-target="slot-na" value="#A0765F"></button>
+                    <button class="heatmap-filter" data-filter="clear">Clear</button>
+                </div>
+            </div>
+
+            <div class="heatmap-filters" id="firmware-filters" style="margin-top: 0;"></div>
+            <div id="fleet-heatmap-machine-row" style="display:flex;justify-content:flex-start;padding:4px 0;min-height:28px;">
+                <span id="fleet-heatmap-machine" style="color:var(--accent);display:none;font-weight:700;font-size:12px;"></span>
+            </div>
+            <div class="heatmap-grid" id="heatmap-grid" style="flex-grow: 1;"></div>
+        </div>
+
+        <!-- Slot Detail Workstation Panel & Vertical Lifecycle Timeline -->
+        <div class="card detail-panel" id="detail-panel">
+            <div class="detail-header">
+                <div class="detail-header-left">
+                    <h3 style="margin:0; display:flex; gap:8px; align-items:center;">
+                        <span class="detail-title-box" id="dt-machine-name"></span>
+                        <span class="detail-title-box">SLOT <span id="dt-id" style="margin-left:4px;"></span></span>
+                    </h3>
+                    <span id="dt-mac" style="font-size: 1.1rem; font-weight: 500; color: var(--muted); margin-left: 12px;"></span>
+                </div>
+                <div class="detail-header-right">
+                    <span class="badge" id="dt-phase"></span>
+                    <span class="badge" id="dt-status"></span>
+                    <div id="dt-charger-controls" style="display:flex;gap:6px;align-items:center;margin-left:10px;"></div>
+                    <div id="dt-awm-controls" style="display:flex;gap:6px;align-items:center;margin-left:6px;"></div>
+                    <button id="dt-freeze-btn" class="nav-btn" style="margin-left: 10px; padding: 4px 8px; font-size: 11px; display: flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 4px; background: rgba(16, 185, 129, 0.1); color: #10b981; cursor: pointer;" title="Toggle live updates for this slot">
+                        <span id="dt-freeze-status" style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block;"></span>
+                        <span id="dt-freeze-text">LIVE</span>
+                    </button>
+                    <div style="display:flex; gap: 8px; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 16px;">
+                        <button class="nav-btn" id="dt-prev" style="background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; padding: 4px;" title="Previous Slot">&#10094;</button>
+                        <button class="nav-btn" id="dt-next" style="background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; padding: 4px;" title="Next Slot">&#10095;</button>
+                    </div>
+                    <button class="close-btn" id="dt-close" style="margin-left: 16px;">&times;</button>
+                </div>
+            </div>
+
+            <div class="detail-stats">
+                <div class="detail-stat">
+                    <div class="kpi-title">AVG BDR</div>
+                    <div class="kpi-val" id="dt-avg-bdr" style="font-size:20px;">0.0</div>
+                </div>
+                <div class="detail-stat">
+                    <div class="kpi-title">TOTAL RUNNING TIME</div>
+                    <div class="kpi-val" id="dt-total-running-time" style="font-size:20px;">--</div>
+                </div>
+                <div class="detail-stat">
+                    <div class="kpi-title">Battery %</div>
+                    <div class="kpi-val" id="dt-batt" style="font-size:20px;"></div>
+                </div>
+                <div class="detail-stat">
+                    <div class="kpi-title">Phase</div>
+                    <div class="kpi-val" id="dt-phs" style="font-size:16px;"></div>
+                </div>
+                <div class="detail-stat">
+                    <div class="kpi-title">Total Workouts</div>
+                    <div class="kpi-val" id="dt-workouts" style="font-size:20px;"></div>
+                </div>
+                <div class="detail-stat">
+                    <div class="kpi-title">SERIAL NUMBER</div>
+                    <div class="kpi-val" id="dt-sn-card" style="font-size:14px; word-break: break-all; margin-top: 4px;">--</div>
+                </div>
+                <div class="detail-stat">
+                    <div class="kpi-title">LAST UPDATED</div>
+                    <div class="kpi-val" id="dt-last-update" style="font-size:14px; margin-top:4px;"></div>
+                </div>
+                <div class="detail-stat">
+                    <div class="kpi-title">FIRMWARE</div>
+                    <div class="kpi-val" id="dt-firmware" style="font-size:14px; margin-top:4px;"></div>
+                </div>
+            </div>
+            <div id="dt-range-info" style="font-size: 11px; color: var(--muted); margin-top: -12px; margin-bottom: 20px; padding: 0 24px; font-style: italic;">
+                Target Ranges — BDR: 5.0-12.0 | Current: 1.0-3.0 mA
+            </div>
+            
+            <div style="margin-bottom: 2rem;">
+                <div class="section-label" style="font-size: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <span>Battery Trajectory</span>
+                    <span id="dt-warn-reason" style="font-size:11px;font-weight:600;color:var(--warn);"></span>
+                </div>
+                <div id="slot-chart" class="chart-contain" style="height: 400px; min-height: 400px;">
+                    <div id="line-chart"></div>
+                </div>
+            </div>
+
+            <div class="section-label" style="font-size: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <span>Vertical Ring Lifecycle Timeline &amp; Workouts</span>
+                <button class="upload-btn" id="dt-export-csv" style="padding: 4px 8px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Download CSV
+                </button>
+            </div>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr><th>Workout</th><th>Start %</th><th>End %</th><th>Duration (m)</th><th>BDR</th><th>Readings</th><th>Died?</th></tr>
+                    </thead>
+                    <tbody id="dt-cycles"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Fleet Telemetry Distribution Charts (Moved Below Fold) -->
+        <div class="ops-section-title" style="margin-top:12px;">Fleet Distribution Metrics</div>
+        <div class="charts-grid">
+            <div class="card">
+                <h3 class="chart-title">Phase Distribution</h3>
+                <div class="chart-contain"><div id="chart-a"></div></div>
+            </div>
+            <div class="card">
+                <h3 class="chart-title">Battery Level Distribution</h3>
+                <div class="chart-contain"><div id="chart-b"></div></div>
+            </div>
+        </div>
+
+        <!-- Workstation Anomaly Log (Moved Below Fold) -->
+        <div class="ops-table-card">
+            <div class="ops-table-header">
+                <div class="ops-section-title">Operational Anomaly Log</div>
+            </div>
+            <div style="overflow-x:auto;">
+                <table style="margin-top:0;">
+                    <thead>
+                        <tr><th>Slot</th><th>MAC Address</th><th>Serial</th><th>Severity</th><th>Description</th><th>BDR</th><th>Cycle</th><th>Duration (m)</th></tr>
+                    </thead>
+                    <tbody id="anomaly-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    </div>
+
+<div id="rings-view" class="mes-workspace-body" style="display: none;">
+
+    <!-- Integrated Workstation Control Toolbar -->
+    <div id="rings-toolbar" class="ops-command-bar">
+        <div class="ops-command-left">
+            <div class="ops-machine-badge">
+                <span class="label">Machines</span>
+                <span id="rings-total-machines" class="val">0</span>
+            </div>
+            <div id="rings-machine-buttons" style="display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;"></div>
+            <div id="rings-bulk-charger-controls" style="display:flex;gap:6px;align-items:center;"></div>
+        </div>
+
+        <div class="ops-command-right">
+            <div class="sn-search-wrapper" style="width:240px;">
                 <div class="sn-search-icon">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
                         <circle cx="11" cy="11" r="8"/>
                         <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                     </svg>
                 </div>
-                <input type="text" id="serial-search" class="sn-search-input" placeholder="SEARCH SERIAL"/>
-                <button class="sn-scan-btn" id="sn-scan-btn">SCAN</button>
+                <input class="filter-input sn-search-input" id="rings-search" type="text" placeholder="SEARCH SERIAL / MAC / RING..." oninput="ringsFilterGrid()">
             </div>
-            <button class="btn-5" id="export-serial-btn" style="display:none;" onclick="exportSerialNumbers()" title="Export Serials">
-                <div class="shine"></div>
-                <svg viewBox="0 0 24 24">
-                    <path d="M12 4v9m0 0l-4-4m4 4l4-4M5 18h14"/>
-                </svg>
+            <button class="export-btn" onclick="ringsExportCSV()" title="Export filtered ring slots data as CSV" style="border-color:var(--border);gap:6px;padding:5px 12px;">
+                <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span style="font-size:11px;font-weight:600;">Export CSV</span>
             </button>
-
-        </div>
-        <div class="section-label">KPI Metrics</div>
-    <div class="dashboard-kpi-grid">
-        <div class="bdr-kpi-card cyan" style="--i:0;">
-            <div class="bdr-kpi-top">
-                <div>
-                    <div class="bdr-kpi-label">Total Slots</div>
-                    <div class="bdr-kpi-value" id="kpi-total">0</div>
-                </div>
-                <div class="bdr-kpi-icon"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg></div>
-            </div>
-            <div class="bdr-kpi-foot"><span>Active slots connected</span><span class="bdr-kpi-pulse"></span></div>
-        </div>
-        <div class="bdr-kpi-card emerald" style="--i:1;">
-            <div class="bdr-kpi-top">
-                <div>
-                    <div class="bdr-kpi-label">Avg Battery</div>
-                    <div class="bdr-kpi-value" id="kpi-batt">0%</div>
-                </div>
-                <div class="bdr-kpi-icon"><svg viewBox="0 0 24 24"><path d="M6 7h11v10H6zM17 10h2v4h-2"/></svg></div>
-            </div>
-            <div class="bdr-kpi-foot"><span>Fleet average battery</span><span class="bdr-kpi-pulse"></span></div>
-        </div>
-        <div class="bdr-kpi-card orange" style="--i:2;">
-            <div class="bdr-kpi-top">
-                <div>
-                    <div class="bdr-kpi-label">Avg Fleet BDR</div>
-                    <div class="bdr-kpi-value" id="kpi-anom">0</div>
-                </div>
-                <div class="bdr-kpi-icon"><svg viewBox="0 0 24 24"><path d="M4 18l5-6 4 3 7-9"/></svg></div>
-            </div>
-            <div class="bdr-kpi-foot"><span>Balance discharge rate</span><span class="bdr-kpi-pulse"></span></div>
-        </div>
-        <div class="bdr-kpi-card purple" style="--i:3;">
-            <div class="bdr-kpi-top">
-                <div>
-                    <div class="bdr-kpi-label">Total Serials</div>
-                    <div class="bdr-kpi-value" id="kpi-serials-raw">0</div>
-                </div>
-                <div class="bdr-kpi-icon"><svg viewBox="0 0 24 24"><path d="M8 7h8M8 12h8M8 17h5"/></svg></div>
-            </div>
-            <div class="bdr-kpi-foot"><span>Including duplicates</span><span class="bdr-kpi-pulse"></span></div>
-        </div>
-        <div class="bdr-kpi-card rose" style="--i:4;">
-            <div class="bdr-kpi-top">
-                <div>
-                    <div class="bdr-kpi-label">Duplicate Entries</div>
-                    <div class="bdr-kpi-value" id="kpi-serials-dup">0</div>
-                </div>
-                <div class="bdr-kpi-icon"><svg viewBox="0 0 24 24"><path d="M8 8h11v11H8zM5 5h11"/></svg></div>
-            </div>
-            <div class="bdr-kpi-foot"><span>Cross-machine duplicates</span><span class="bdr-kpi-pulse"></span></div>
-        </div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-        <button class="upload-btn" id="show-dup-btn" onclick="showDuplicatesModal()" style="padding:6px 10px;font-size:12px;">Show Duplicate Serials</button>
-        <button class="upload-btn" onclick="showFirmwareModal()" style="padding:6px 10px;font-size:12px;">Firmware</button>
-        <div id="duplicates-panel" style="display:none; margin-left:8px; flex:1;"></div>
-    </div>
-
-    <!-- Heatmap -->
-    <div class="card" style="flex-grow: 1; display: flex; flex-direction: column;">
-        <div class="section-label" style="margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:4px;">
-                <button class="export-btn" id="export-fleet-summary-btn" style="border-color:var(--border);gap:6px;padding:5px 12px;" onclick="exportFleetSummary()">
-                    <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    <span style="font-size:11px;font-weight:600;">Export Fleet Summary</span>
-                </button>
-                <button class="export-btn" id="export-qualified-btn" style="border-color:var(--border);gap:6px;padding:5px 12px;">
-                    <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    <span style="font-size:11px;font-weight:600;">Export Qualified</span>
-                </button>
-                <span id="qualified-count" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;background:var(--slot-pass-bg);color:var(--slot-pass-color);font-size:11px;font-weight:700;font-family:var(--f-mono);border:1px solid color-mix(in srgb, var(--slot-pass-color) 30%, transparent);">0</span>
-            </div>
-            <span>Fleet Heatmap</span>
-        </div>
-        <div class="heatmap-filters" id="heatmap-filters">
-            <button class="heatmap-filter" data-filter="slot-pass"><span class="fdot pick-color" style="background:#12f202" title="Click to change color"></span>Pass <input type="color" class="color-picker" data-target="slot-pass" value="#12f202"></button>
-            <button class="heatmap-filter" data-filter="slot-ok"><span class="fdot pick-color" style="background:rgb(58, 142, 173)" title="Click to change color"></span>Normal <input type="color" class="color-picker" data-target="slot-ok" value="#02f2ba"></button>
-            <button class="heatmap-filter" data-filter="slot-low-bdr"><span class="fdot pick-color" style="background:#0EA5E9" title="Click to change color"></span>Low Avg BDR <input type="color" class="color-picker" data-target="slot-low-bdr" value="#0EA5E9"></button>
-            <button class="heatmap-filter" data-filter="slot-high-bdr"><span class="fdot pick-color" style="background:#EC4899" title="Click to change color"></span>High Avg BDR <input type="color" class="color-picker" data-target="slot-high-bdr" value="#EC4899"></button>
-            <button class="heatmap-filter" data-filter="slot-sensor-issue"><span class="fdot pick-color" style="background:#14B8A6" title="Click to change color"></span>Sensor Issue <input type="color" class="color-picker" data-target="slot-sensor-issue" value="#14B8A6"></button>
-            <button class="heatmap-filter" data-filter="slot-warn"><span class="fdot pick-color" style="background:#F59E0B" title="Click to change color"></span>Warning <input type="color" class="color-picker" data-target="slot-warn" value="#F59E0B"></button>
-            <button class="heatmap-filter" data-filter="slot-danger"><span class="fdot pick-color" style="background:#DC2626" title="Click to change color"></span>Failure <input type="color" class="color-picker" data-target="slot-danger" value="#DC2626"></button>
-            <button class="heatmap-filter" data-filter="slot-dead"><span class="fdot pick-color" style="background:#4F46E5" title="Click to change color"></span>Died <input type="color" class="color-picker" data-target="slot-dead" value="#4F46E5"></button>
-            <button class="heatmap-filter" data-filter="slot-empty"><span class="fdot pick-color" style="background:#9CA3AF" title="Click to change color"></span>No Data <input type="color" class="color-picker" data-target="slot-empty" value="#9CA3AF"></button>
-            <button class="heatmap-filter" data-filter="slot-na"><span class="fdot pick-color" style="background:#A0765F" title="Click to change color"></span>N/A <input type="color" class="color-picker" data-target="slot-na" value="#A0765F"></button>
-            <button class="heatmap-filter" data-filter="clear" style="margin-left:auto;">Clear</button>
-        </div>
-        <div class="heatmap-filters" id="firmware-filters" style="margin-top: 8px;"></div>
-        <div id="fleet-heatmap-machine-row" style="display:flex;justify-content:flex-start;padding:6px 0;min-height:32px;">
-            <span id="fleet-heatmap-machine" style="color:var(--accent);display:none;"></span>
-        </div>
-        <div class="heatmap-grid" id="heatmap-grid" style="flex-grow: 1;"></div>
-        <div class="heatmap-legend" style="margin-top: 12px; margin-bottom: 0;">
-            <div><span class="legend-dot" style="background:#12f202"></span> Pass</div>
-            <div><span class="legend-dot" style="background:rgb(58, 142, 173)"></span> Active</div>
-            <div><span class="legend-dot" style="background:#0EA5E9"></span> Low Avg BDR</div>
-            <div><span class="legend-dot" style="background:#EC4899"></span> High Avg BDR</div>
-            <div><span class="legend-dot" style="background:#14B8A6"></span> Sensor Issue</div>
-            <div><span class="legend-dot" style="background:#F59E0B"></span> Warning</div>
-            <div><span class="legend-dot" style="background:#DC2626"></span> High Failure</div>
-            <div><span class="legend-dot" style="background:#4F46E5"></span> Died Cycle</div>
-            <div><span class="legend-dot" style="background:#9CA3AF"></span> No Data</div>
-            <div><span class="legend-dot" style="background:#A0765F"></span> N/A (No Graph)</div>
-        </div>
-    </div>
-
-    <!-- Detail Panel -->
-    <div class="card detail-panel" id="detail-panel">
-        <div class="detail-header">
-            <div class="detail-header-left">
-                <h3 style="margin:0; display:flex; gap:8px; align-items:center;">
-                    <span class="detail-title-box" id="dt-machine-name"></span>
-                    <span class="detail-title-box">SLOT <span id="dt-id" style="margin-left:4px;"></span></span>
-                </h3>
-                <span id="dt-mac" style="font-size: 1.1rem; font-weight: 500; color: var(--muted); margin-left: 12px;"></span>
-            </div>
-            <div class="detail-header-right">
-                <span class="badge" id="dt-phase"></span>
-                <span class="badge" id="dt-status"></span>
-                <div id="dt-charger-controls" style="display:flex;gap:6px;align-items:center;margin-left:10px;"></div>
-                <div id="dt-awm-controls" style="display:flex;gap:6px;align-items:center;margin-left:6px;"></div>
-                <button id="dt-freeze-btn" class="nav-btn" style="margin-left: 10px; padding: 4px 8px; font-size: 11px; display: flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 4px; background: rgba(16, 185, 129, 0.1); color: #10b981; cursor: pointer;" title="Toggle live updates for this slot">
-                    <span id="dt-freeze-status" style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block;"></span>
-                    <span id="dt-freeze-text">LIVE</span>
-                </button>
-                <div style="display:flex; gap: 8px; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 16px;">
-                    <button class="nav-btn" id="dt-prev" style="background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; padding: 4px;" title="Previous Slot">&#10094;</button>
-                    <button class="nav-btn" id="dt-next" style="background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; padding: 4px;" title="Next Slot">&#10095;</button>
-                </div>
-                <button class="close-btn" id="dt-close" style="margin-left: 16px;">&times;</button>
-            </div>
-        </div>
-        <div class="detail-stats">
-            <div class="detail-stat">
-                <div class="kpi-title">AVG BDR</div>
-                <div class="kpi-val" id="dt-avg-bdr" style="font-size:20px;">0.0</div>
-            </div>
-            <div class="detail-stat">
-                <div class="kpi-title">TOTAL RUNNING TIME</div>
-                <div class="kpi-val" id="dt-total-running-time" style="font-size:20px;">--</div>
-            </div>
-            <div class="detail-stat">
-                <div class="kpi-title">Battery %</div>
-                <div class="kpi-val" id="dt-batt" style="font-size:20px;"></div>
-            </div>
-            <div class="detail-stat">
-                <div class="kpi-title">Phase</div>
-                <div class="kpi-val" id="dt-phs" style="font-size:16px;"></div>
-            </div>
-            <div class="detail-stat">
-                <div class="kpi-title">Total Workouts</div>
-                <div class="kpi-val" id="dt-workouts" style="font-size:20px;"></div>
-            </div>
-            <div class="detail-stat">
-                <div class="kpi-title">SERIAL NUMBER</div>
-                <div class="kpi-val" id="dt-sn-card" style="font-size:14px; word-break: break-all; margin-top: 4px;">--</div>
-            </div>
-            <div class="detail-stat">
-                <div class="kpi-title">LAST UPDATED</div>
-                <div class="kpi-val" id="dt-last-update" style="font-size:14px; margin-top:4px;"></div>
-            </div>
-            <div class="detail-stat">
-                <div class="kpi-title">FIRMWARE</div>
-                <div class="kpi-val" id="dt-firmware" style="font-size:14px; margin-top:4px;"></div>
-            </div>
-        </div>
-        <div id="dt-range-info" style="font-size: 11px; color: var(--muted); margin-top: -12px; margin-bottom: 20px; padding: 0 24px; font-style: italic;">
-            Target Ranges — BDR: 5.0-12.0 | Current: 1.0-3.0 mA
-        </div>
-        
-        <div style="margin-bottom: 2rem;">
-            <div class="section-label" style="font-size: 10px; display: flex; justify-content: space-between; align-items: center;">
-                <span>Battery Trajectory</span>
-                <span id="dt-warn-reason" style="font-size:11px;font-weight:600;color:var(--warn);"></span>
-            </div>
-            <div id="slot-chart" class="chart-contain" style="height: 400px; min-height: 400px;">
-                <div id="line-chart"></div>
-            </div>
-        </div>
-
-        <div class="section-label" style="font-size: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <span>Completed Workouts</span>
-            <button class="upload-btn" id="dt-export-csv" style="padding: 4px 8px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                Download CSV
+            <button class="export-btn" onclick="ringsClearAllFilters()" title="Clear all filters" style="border-color:rgba(239,68,68,0.3);color:var(--danger);gap:6px;padding:5px 12px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <span style="font-size:11px;font-weight:600;">Clear</span>
             </button>
-        </div>
-        <div style="overflow-x:auto;">
-            <table>
-                <thead>
-                    <tr><th>Workout</th><th>Start %</th><th>End %</th><th>Duration (m)</th><th>BDR</th><th>Readings</th><th>Died?</th></tr>
-                </thead>
-                <tbody id="dt-cycles"></tbody>
-            </table>
+            <span class="chip ok hidden" id="rings-watch-badge" style="font-family:var(--f-mono);font-size:11px;font-weight:600;">● Live Refresh</span>
         </div>
     </div>
 
-    <div id="spotlight-section" style="display: none; flex-direction: column; gap: 12px; margin-bottom: 8px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-end;">
-            <div class="section-label" style="margin:0;">Anomaly Spotlight</div>
-            <div id="spotlight-insight" style="font-size: 12px; color: var(--muted);">0 anomalies detected</div>
-        </div>
-        <div class="spotlight-grid" id="spotlight-grid"></div>
-    </div>
-
-    <div class="section-label">Session Overview</div>
-    <div class="charts-grid">
-        <div class="card">
-            <h3 class="chart-title">Phase Distribution</h3>
-            <div class="chart-contain"><div id="chart-a"></div></div>
-        </div>
-        <div class="card">
-            <h3 class="chart-title">Battery Level Distribution</h3>
-            <div class="chart-contain"><div id="chart-b"></div></div>
-        </div>
-
-    </div>
-
-    <div class="section-label">Anomaly Report</div>
-    <div class="card" style="padding: 0;">
-        <div style="overflow-x:auto;">
-            <table style="margin-top:0;">
-                <thead>
-                    <tr><th>Slot</th><th>MAC Address</th><th>Serial</th><th>Severity</th><th>Description</th><th>BDR</th><th>Cycle</th><th>Duration (m)</th></tr>
-                </thead>
-                <tbody id="anomaly-tbody"></tbody>
-            </table>
-        </div>
-    </div>
-    </div>
-    
-    <footer>
-        <div id="f-session"></div>
-        <div class="mono" id="f-fw" style="visibility: hidden;"></div>
-        <div id="f-slots"></div>
-    </footer>
-</div>
-
-<!-- ── Ring Slots View ── -->
-<div id="rings-view" style="display: none; flex-direction: column; gap: 16px; flex-grow: 1;">
-
-    <div id="rings-toolbar" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-        <button class="floorplan-toggle" onclick="ringsExportCSV()" title="Export filtered ring slots data as CSV">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export CSV
-        </button>
-        <button class="floorplan-toggle" onclick="ringsClearAllFilters()" title="Clear all filters" style="color:var(--danger);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            Clear
-        </button>
-        <span class="chip ok hidden" id="rings-watch-badge">● Watching — live auto-refresh</span>
-    </div>
-
-    <div class="kpi-grid" id="rings-stats" style="display: none;">
-        <div class="kpi-card ring-kpi ring-kpi-total" style="--kpi-accent:#3B82F6;">
-            <div class="kpi-header"><div class="kpi-left"><span class="kpi-dot"></span><span class="kpi-label">Total Slots</span></div><div class="kpi-icon">◈</div></div>
-            <div class="kpi-value" id="rings-stat-slots">0</div>
-            <div class="kpi-progress-row"><div class="kpi-progress-track"><div class="kpi-progress-fill" style="width:100%"></div></div><div class="kpi-percent">100%</div></div>
-        </div>
-    </div>
-
-    <div id="rings-filters" style="display: flex; flex-direction: column; gap: 8px;">
-        <div id="rings-machine-row" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:4px 10px;">
-                <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);font-weight:600;">Machines</span>
-                <span id="rings-total-machines" style="font-size:14px;font-weight:700;color:var(--text);line-height:1;">0</span>
+    <!-- Telemetry & Status Filters -->
+    <div id="rings-filters" class="ops-kpi-tile" style="padding:12px 16px;">
+        <div id="rings-filter-row" style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span class="ops-section-title" style="margin:0;">Ring Filter Matrix:</span>
+                <div class="heatmap-filters" id="rings-status-filters" style="margin:0;"></div>
             </div>
-            <div id="rings-machine-buttons" style="display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;"></div>
-            <div id="rings-bulk-charger-controls" style="display:flex;gap:6px;align-items:center;"></div>
-        </div>
-        <div id="rings-filter-row" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <div class="heatmap-filters" id="rings-status-filters" style="margin:0;"></div>
-            <input class="filter-input" id="rings-search" type="text" placeholder="Search serial, MAC, or ring name..." oninput="ringsFilterGrid()" style="font-family:var(--f-mono);font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);width:240px;outline:none;">
+            <div class="kpi-grid" id="rings-stats" style="display: none; margin:0;">
+                <div class="kpi-card ring-kpi ring-kpi-total" style="--kpi-accent:#3B82F6;padding:4px 12px;min-height:auto;">
+                    <div class="kpi-header" style="margin:0;"><div class="kpi-left"><span class="kpi-dot"></span><span class="kpi-label">Active Slots:</span></div></div>
+                    <div class="kpi-value" id="rings-stat-slots" style="font-size:16px;font-weight:800;font-family:var(--f-mono);">0</div>
+                    <div class="kpi-progress-row" style="display:none;"><div class="kpi-progress-track"><div class="kpi-progress-fill" style="width:100%"></div></div><div class="kpi-percent">100%</div></div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div id="rings-grid-container" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface);">
-        <div id="rings-grid-header" style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px 0;font-size:11px;font-weight:600;color:var(--text2);letter-spacing:0.05em;text-transform:uppercase;">
-            <span id="rings-grid-machine-label">All Machines</span>
-            <span id="rings-grid-count-label" style="font-weight:400;color:var(--muted);font-size:10px;"></span>
+    <!-- Slot Detail Inspector & Digital Twin Ring Workspace Panel -->
+    <div id="rings-detail-panel" class="ring-workspace-card hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span class="ops-section-title" style="margin:0;">RING WORKSPACE &mdash; DIGITAL TWIN</span>
+                <span style="font-weight:700;font-size:13px;font-family:var(--f-mono);color:var(--text);background:var(--border);padding:2px 8px;border-radius:4px;">
+                    SLOT <span id="rings-detail-slot"></span>
+                </span>
+                <span id="rings-detail-state" class="badge"></span>
+            </div>
+            <button class="close-btn" onclick="ringsCloseDetail()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;padding:4px 8px;">&times;</button>
         </div>
-        <div id="rings-grid" style="display:grid;grid-template-columns:repeat(16,1fr);gap:7px;padding:14px;"></div>
+
+        <!-- 10-Second Operator Decision & Health Deck -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;">
+            <!-- Decision Panel -->
+            <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--blue);">OPERATOR DECISION CONSOLE</span>
+                    <span style="font-size:10px;font-family:var(--f-mono);color:var(--muted);">CONFIDENCE: 100% (HIGH)</span>
+                </div>
+                <div style="font-size:12px;color:var(--text);font-weight:600;">
+                    Status: <strong style="color:var(--text);">Pending Removal (SLA Overdue)</strong>
+                </div>
+                <button class="op-queue-action-btn" style="width:100%;padding:8px 14px;font-size:12px;" onclick="ringsCloseDetail()">
+                    <span>PERFORM ACTION: REMOVE RING</span>
+                </button>
+                <div style="font-size:10px;color:var(--muted);font-family:var(--f-mono);margin-top:2px;">
+                    Reasoning: Inspection Passed &#10003; | Voltage Normal &#10003; | Temp Normal &#10003; | No Faults &#10003;
+                </div>
+                <div style="font-size:10px;color:var(--text2);margin-top:2px;">
+                    Escalation Contact: <strong>Shift Supervisor #104 (Ext: 4022)</strong>
+                </div>
+            </div>
+
+            <!-- Overall Ring Health 7-Point Checklist -->
+            <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--text);">OVERALL RING HEALTH</span>
+                    <span style="font-size:11px;font-weight:800;color:#10b981;font-family:var(--f-mono);">&#9679; PASSED</span>
+                </div>
+                <div class="ring-health-grid">
+                    <div class="ring-health-item"><span>Inspection</span><span style="color:#10b981;">&#10003;</span></div>
+                    <div class="ring-health-item"><span>Battery</span><span style="color:#10b981;">&#10003;</span></div>
+                    <div class="ring-health-item"><span>Voltage</span><span style="color:#10b981;">&#10003;</span></div>
+                    <div class="ring-health-item"><span>Temp</span><span style="color:#10b981;">&#10003;</span></div>
+                    <div class="ring-health-item"><span>Firmware</span><span style="color:#10b981;">&#10003;</span></div>
+                    <div class="ring-health-item"><span>Sensor</span><span style="color:#10b981;">&#10003;</span></div>
+                    <div class="ring-health-item"><span>Comm</span><span style="color:#10b981;">&#10003;</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Workspace Split: Expandable Timeline + Interpreted SCADA Telemetry -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;">
+            <!-- Left: Vertical Lifecycle Timeline -->
+            <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;padding:12px;">
+                <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--text);display:block;margin-bottom:10px;">Ring Lifecycle Timeline</span>
+                <div class="ring-timeline-list">
+                    <div class="ring-timeline-item"><span>09:10 Assigned</span><span style="color:var(--muted);">Tech #402 (08m)</span></div>
+                    <div class="ring-timeline-item"><span>09:18 Inspection Started</span><span style="color:var(--muted);">Auto-Scan (04m)</span></div>
+                    <div class="ring-timeline-item"><span>09:22 Inspection Passed</span><span style="color:#10b981;">PASSED (09m)</span></div>
+                    <div class="ring-timeline-item"><span>09:31 Pending Removal</span><span style="color:var(--danger);">🔴 OVERDUE (4m)</span></div>
+                </div>
+            </div>
+
+            <!-- Right: Interpreted SCADA Telemetry Console -->
+            <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;padding:12px;">
+                <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--text);display:block;margin-bottom:10px;">Interpreted SCADA Telemetry</span>
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                    <div class="telemetry-interpreted-row"><span>Serial Number:</span><span id="rings-detail-serial" class="mono" style="font-weight:700;">--</span></div>
+                    <div class="telemetry-interpreted-row"><span>Ring MAC:</span><span id="rings-detail-mac" class="mono" style="font-weight:700;">--</span></div>
+                    <div class="telemetry-interpreted-row"><span>Battery Level:</span><span style="color:#10b981;font-weight:700;">88% &#10003; (Nominal)</span></div>
+                    <div class="telemetry-interpreted-row"><span>Voltage Readout:</span><span style="color:#10b981;font-weight:700;">3.21 V &#10003; (In Target)</span></div>
+                    <div class="telemetry-interpreted-row"><span>Temperature:</span><span style="color:#10b981;font-weight:700;">28.4 &deg;C &#10003; (&lt;40&deg;C Target)</span></div>
+                    <div class="telemetry-interpreted-row"><span>Firmware Version:</span><span id="rings-detail-fw" class="mono" style="font-weight:700;">--</span></div>
+                </div>
+
+                <div style="display:flex;gap:8px;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;">
+                    <div id="rings-charger-controls" style="display:flex;gap:6px;align-items:center;"></div>
+                    <div id="rings-awm-controls" style="display:flex;gap:6px;align-items:center;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Adaptive Slot Grid Workstation Container -->
+    <div id="rings-grid-container" class="ops-heatmap-card" style="padding:0;overflow:hidden;">
+        <div id="rings-grid-header" class="ops-table-header">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span class="ops-section-title" id="rings-grid-machine-label" style="margin:0;">All Machines</span>
+            </div>
+            <span id="rings-grid-count-label" style="font-weight:700;color:var(--muted);font-size:11px;font-family:var(--f-mono);"></span>
+        </div>
+        <div id="rings-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(68px, 1fr));gap:8px;padding:16px;"></div>
     </div>
 
     <div id="rings-legend" class="heatmap-legend" style="display:none;"></div>
@@ -523,107 +702,107 @@
             Open Folder (Fallback)
         </button>
     </div>
-
-    <!-- Rings Slot Detail Panel -->
-    <div id="rings-detail-panel" style="border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden;margin-bottom:40px;" class="hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);">
-            <span style="font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);">
-                Slot Details — <span id="rings-detail-slot"></span>
-            </span>
-            <button class="close-btn" onclick="ringsCloseDetail()" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;border-radius:4px;">&times;</button>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px;font-size:13px;">
-            <div><span style="color:var(--muted);font-size:11px;">Serial Number</span><br><span id="rings-detail-serial" class="mono" style="font-size:12px;"></span></div>
-            <div><span style="color:var(--muted);font-size:11px;">Ring MAC</span><br><span id="rings-detail-mac" class="mono" style="font-size:12px;"></span></div>
-            <div><span style="color:var(--muted);font-size:11px;">Status</span><br><span id="rings-detail-state" class="badge"></span></div>
-            <div><span style="color:var(--muted);font-size:11px;">Firmware</span><br><span id="rings-detail-fw" class="mono" style="font-size:12px;"></span></div>
-        </div>
-        <div id="rings-charger-controls" style="display:flex;gap:8px;align-items:center;padding:0 14px 14px;"></div>
-        <div id="rings-awm-controls" style="display:flex;gap:8px;align-items:center;padding:0 14px 14px;"></div>
-    </div>
 </div>
 
 <!-- ── Data Visualisation View ── -->
-<div id="data-viz-view" style="display: none; flex-direction: column; gap: 16px; flex-grow: 1;">
-    <div class="section-label">Serial Data Visualisation</div>
+<div id="data-viz-view" class="mes-workspace-body" style="display: none;">
+    <div class="ops-command-bar">
+        <div class="ops-command-left">
+            <span class="ops-section-title" style="margin:0;">Serial Data Analytics Workstation</span>
+        </div>
+        <div class="ops-command-right">
+            <div id="dv-breadcrumb" style="font-size:11px;font-family:var(--f-mono);color:var(--text2);display:flex;gap:6px;align-items:center;"></div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
     <div id="dv-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;min-height:400px;text-align:center;">
         <svg fill="none" stroke="var(--muted)" stroke-width="1.5" viewBox="0 0 24 24" style="width:48px;height:48px;margin-bottom:16px;">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/>
         </svg>
-        <h2 style="margin:0 0 8px;font-weight:500;">No Data</h2>
-        <p style="color:var(--muted);margin:0;font-size:14px;">Open a session folder to view serial data visualisation</p>
+        <h2 style="margin:0 0 8px;font-weight:500;">No Data Available</h2>
+        <p style="color:var(--muted);margin:0;font-size:14px;">Open a session folder or select an active machine to populate serial analytics</p>
     </div>
+
+    <!-- Data Content -->
     <div id="dv-content" style="display:none;flex-direction:column;gap:16px;">
         <div class="kpi-grid" id="dv-summary-cards"></div>
-        <div class="card" id="dv-category-section">
-            <div id="dv-breadcrumb" style="font-size:11px;color:var(--muted);margin-bottom:8px;display:flex;gap:6px;align-items:center;"></div>
+        
+        <div class="ops-heatmap-card" id="dv-category-section">
             <div id="dv-category-nav" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
             <div id="dv-category-content"></div>
         </div>
-        <div class="card" style="padding:16px;">
-            <div class="section-label" style="margin-bottom:8px;">Distribution</div>
+
+        <div class="ops-heatmap-card" style="padding:16px;">
+            <div class="ops-section-title" style="margin-bottom:12px;">Serial Telemetry Distribution</div>
             <div id="dv-bar-chart" style="height:250px;"></div>
         </div>
     </div>
 </div>
 
 <!-- ── Diagnostics View ── -->
-<div id="diagnostics-view" style="display: none; flex-direction: column; gap: 16px; flex-grow: 1;">
+<div id="diagnostics-view" class="mes-workspace-body" style="display: none;">
     <!-- Selection Screen (shown when no machine is selected) -->
     <div id="diag-selection-screen" style="display:flex;flex-direction:column;gap:16px;flex-grow:1;">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <span style="font-size:18px;font-weight:700;">Select a Machine for Diagnostics</span>
-            <button class="heatmap-filter" onclick="closeDiagnostics()" style="padding:5px 14px;font-size:11px;">&larr; Back to Dashboard</button>
+        <div class="ops-command-bar">
+            <div class="ops-command-left">
+                <span class="ops-section-title" style="margin:0;">Hardware Diagnostics Console — Machine Selection</span>
+            </div>
+            <div class="ops-command-right">
+                <button class="export-btn" onclick="closeDiagnostics()" style="border-color:var(--border);gap:6px;padding:5px 12px;">
+                    <span>&larr; Back to Command Center</span>
+                </button>
+            </div>
         </div>
-        <div class="card" style="padding:16px;flex-grow:1;display:flex;flex-direction:column;">
-            <div id="diag-machine-grid" style="display:grid;grid-template-columns:repeat(8,1fr);grid-auto-rows:1fr;gap:8px;flex:1;"></div>
-            <div id="diag-no-machines-msg" style="display:none;color:var(--muted);font-size:14px;text-align:center;padding:48px 0;">No machine data loaded. Open a folder or connect to the API first.</div>
+        <div class="ops-heatmap-card" style="padding:16px;flex-grow:1;display:flex;flex-direction:column;">
+            <div id="diag-machine-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));grid-auto-rows:1fr;gap:12px;flex:1;"></div>
+            <div id="diag-no-machines-msg" style="display:none;color:var(--muted);font-size:14px;text-align:center;padding:48px 0;">No machine data loaded. Open a session folder or connect to the API first.</div>
         </div>
     </div>
 
     <!-- Controls Screen (hidden until a machine is selected) -->
     <div id="diag-controls-screen" style="display:none;flex-direction:column;gap:16px;flex-grow:1;">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <button class="heatmap-filter" onclick="showDiagSelection()" style="padding:5px 14px;font-size:11px;">&larr; Machines</button>
-                <button class="heatmap-filter" onclick="closeDiagnostics()" style="padding:5px 14px;font-size:11px;color:var(--muted);">&larr; Dashboard</button>
-                <span style="font-size:13px;font-weight:600;">
-                    Diagnosing: <span id="diag-machine-name" style="color:#8B5CF6;">--</span>
-                </span>
+        <div class="ops-command-bar">
+            <div class="ops-command-left">
+                <button class="export-btn" onclick="showDiagSelection()" style="border-color:var(--border);padding:4px 10px;font-size:11px;">&larr; Select Machine</button>
+                <button class="export-btn" onclick="closeDiagnostics()" style="border-color:var(--border);padding:4px 10px;font-size:11px;color:var(--muted);">&larr; Dashboard</button>
+                <div class="ops-machine-badge" style="margin-left:6px;">
+                    <span class="label">Diagnosing Machine:</span>
+                    <span id="diag-machine-name" class="val" style="color:var(--blue);">--</span>
+                </div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span id="diag-connection-status" class="badge neutral">Not Connected</span>
-                <button class="heatmap-filter" id="diag-connect-btn" onclick="diagConnect()" style="padding:5px 14px;font-size:11px;color:#3B82F6;">Connect</button>
+            <div class="ops-command-right">
+                <span id="diag-connection-status" class="badge neutral" style="font-family:var(--f-mono);">Not Connected</span>
+                <button class="export-btn" id="diag-connect-btn" onclick="diagConnect()" style="border-color:var(--blue);color:var(--blue);padding:4px 12px;font-weight:700;">Connect API</button>
             </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;flex-grow:1;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;flex-grow:1;">
             <!-- Left Column: Button Grid -->
-            <div class="diag-panel" id="diag-button-grid-panel">
+            <div class="diag-panel ops-heatmap-card" id="diag-button-grid-panel" style="padding:16px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-                    <span class="diag-section-label">8x8 Button Grid</span>
+                    <span class="ops-section-title" style="margin:0;">8x8 Hardware Matrix</span>
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span id="diag-live-dot" style="width:8px;height:8px;border-radius:50%;background:#6B7280;display:inline-block;"></span>
-                        <span id="diag-live-label" style="font-size:10px;color:#8a8aaa;">Stopped</span>
+                        <span id="diag-live-label" style="font-size:11px;font-family:var(--f-mono);color:var(--muted);">Stopped</span>
                         <button class="diag-btn" id="diag-monitor-btn" onclick="diagToggleMonitor()">Start</button>
                         <button class="diag-btn diag-btn-primary" onclick="diagQuickScan()">Quick Scan</button>
                     </div>
                 </div>
-                <div id="diag-button-grid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;">
-                </div>
-                <div id="diag-scan-summary" style="font-size:11px;color:#8a8aaa;margin-top:8px;min-height:18px;"></div>
+                <div id="diag-button-grid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;"></div>
+                <div id="diag-scan-summary" style="font-size:11px;font-family:var(--f-mono);color:var(--muted);margin-top:10px;min-height:18px;"></div>
             </div>
 
-            <!-- Right Column: All Other Panels Stacked -->
+            <!-- Right Column: Subsystem Control Panels -->
             <div style="display:flex;flex-direction:column;gap:16px;">
                 <!-- LED Control -->
-                <div class="diag-panel">
-                    <span class="diag-section-label">LED Control</span>
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-                        <label style="font-size:11px;color:#8a8aaa;">Slot:</label>
-                        <input type="number" id="diag-led-slot" min="1" max="64" value="1" style="width:60px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;background:rgba(18,18,30,0.8);color:#e4e4f0;font-size:12px;">
-                        <label style="font-size:11px;color:#8a8aaa;">Color:</label>
-                        <input type="color" id="diag-led-color" value="#ff0000" style="width:36px;height:30px;padding:0;border:1px solid rgba(255,255,255,0.1);border-radius:6px;cursor:pointer;">
+                <div class="diag-panel ops-heatmap-card" style="padding:14px;">
+                    <span class="ops-section-title" style="margin:0;">LED Matrix Hardware Control</span>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+                        <label style="font-size:11px;color:var(--muted);font-weight:700;">Slot:</label>
+                        <input type="number" id="diag-led-slot" min="1" max="64" value="1" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;font-family:var(--f-mono);">
+                        <label style="font-size:11px;color:var(--muted);font-weight:700;">Color:</label>
+                        <input type="color" id="diag-led-color" value="#ff0000" style="width:36px;height:28px;padding:0;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
                     </div>
                     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px;">
                         <button class="diag-btn" onclick="diagLedSet('red')">Red</button>
@@ -644,13 +823,13 @@
                         <button class="diag-btn" onclick="diagLedRestore()">Restore</button>
                         <button class="diag-btn" onclick="diagLedDiagnose()">Diagnose</button>
                     </div>
-                    <div id="diag-led-result" style="font-size:11px;color:#8a8aaa;margin-top:8px;min-height:18px;"></div>
+                    <div id="diag-led-result" style="font-size:11px;font-family:var(--f-mono);color:var(--muted);margin-top:8px;min-height:18px;"></div>
                 </div>
 
                 <!-- Quick Actions -->
-                <div class="diag-panel">
-                    <span class="diag-section-label">Quick Actions</span>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                <div class="diag-panel ops-heatmap-card" style="padding:14px;">
+                    <span class="ops-section-title" style="margin:0;">Quick Hardware Actions</span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
                         <button class="diag-btn" onclick="diagFullDiagnostics()">Full Diagnostics</button>
                         <button class="diag-btn" onclick="diagMotorStatus()">Motor Status</button>
                         <button class="diag-btn" onclick="diagTroubleshoot('reconfigure_mcps')">Reconfig MCPs</button>
@@ -660,9 +839,9 @@
                 </div>
 
                 <!-- Audit -->
-                <div class="diag-panel">
-                    <span class="diag-section-label">Audit</span>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                <div class="diag-panel ops-heatmap-card" style="padding:14px;">
+                    <span class="ops-section-title" style="margin:0;">System & Process Audit</span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
                         <button class="diag-btn" onclick="diagAudit()">Folder Audit</button>
                         <button class="diag-btn" onclick="diagAuditProcesses()">Process Audit</button>
                         <button class="diag-btn" onclick="diagAuditSystem()">System Info</button>
@@ -670,9 +849,9 @@
                 </div>
 
                 <!-- MCP / Button -->
-                <div class="diag-panel">
-                    <span class="diag-section-label">MCP / Button</span>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                <div class="diag-panel ops-heatmap-card" style="padding:14px;">
+                    <span class="ops-section-title" style="margin:0;">MCP Controller Repair</span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
                         <button class="diag-btn" onclick="diagMcpScan()">MCP Scan</button>
                         <button class="diag-btn" onclick="diagMcpRepair()">MCP Repair</button>
                         <button class="diag-btn" onclick="diagMcpAdvancedRepair()">MCP Adv Repair</button>
@@ -681,9 +860,9 @@
                 </div>
 
                 <!-- Bluetooth Diagnostics -->
-                <div class="diag-panel">
-                    <span class="diag-section-label">Bluetooth</span>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                <div class="diag-panel ops-heatmap-card" style="padding:14px;">
+                    <span class="ops-section-title" style="margin:0;">Bluetooth BLE Subsystem</span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
                         <button class="diag-btn" onclick="diagBt('status')">Status</button>
                         <button class="diag-btn" onclick="diagBt('diagnose')">Diagnose</button>
                         <button class="diag-btn" onclick="diagBt('scan')">BLE Scan</button>
@@ -691,8 +870,8 @@
                         <button class="diag-btn" onclick="diagBt('full-reset')">Full Reset</button>
                         <button class="diag-btn" onclick="diagBt('recover')">Recover</button>
                     </div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);">
-                        <span style="font-size:10px;color:#8a8aaa;display:block;margin-bottom:6px;">Advanced Bluetooth</span>
+                    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
+                        <span style="font-size:10px;color:var(--muted);display:block;margin-bottom:6px;font-weight:700;">ADVANCED BLE RECOVERY</span>
                         <div style="display:flex;gap:6px;flex-wrap:wrap;">
                             <button class="diag-btn" onclick="diagBtConnectionCheck()">Connection Check</button>
                             <button class="diag-btn" onclick="diagBtLiveLog()">Live Log</button>
@@ -704,81 +883,101 @@
                 </div>
 
                 <!-- Read Single Location -->
-                <div class="diag-panel">
-                    <span class="diag-section-label">Read Single Location</span>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
-                        <input type="number" id="diag-read-loc" min="1" max="64" value="1" style="width:80px;padding:4px 8px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;background:rgba(18,18,30,0.8);color:#e4e4f0;font-size:12px;">
-                        <button class="diag-btn diag-btn-primary" onclick="diagReadLocation()">Read</button>
-                        <span id="diag-read-result" style="font-size:11px;color:#8a8aaa;"></span>
+                <div class="diag-panel ops-heatmap-card" style="padding:14px;">
+                    <span class="ops-section-title" style="margin:0;">Single Location Sensor Read</span>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;">
+                        <input type="number" id="diag-read-loc" min="1" max="64" value="1" style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;font-family:var(--f-mono);">
+                        <button class="diag-btn diag-btn-primary" onclick="diagReadLocation()">Read Location</button>
+                        <span id="diag-read-result" style="font-size:11px;font-family:var(--f-mono);color:var(--muted);"></span>
                     </div>
                 </div>
 
                 <!-- Results Panel -->
-                <div class="diag-terminal-panel" id="diag-results-card" style="display:none;">
+                <div class="diag-terminal-panel ops-heatmap-card" id="diag-results-card" style="display:none;padding:14px;">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                        <span class="diag-section-label">Results</span>
-                        <button class="diag-btn" onclick="diagClearResults()">Clear</button>
+                        <span class="ops-section-title" style="margin:0;">Diagnostic Console Output</span>
+                        <button class="diag-btn" onclick="diagClearResults()">Clear Output</button>
                     </div>
-                    <pre id="diag-results" class="diag-terminal-content"></pre>
+                    <pre id="diag-results" class="diag-terminal-content" style="font-family:var(--f-mono);font-size:11px;"></pre>
                 </div>
             </div>
         </div>
 
         <!-- Live Log Panel -->
-        <div class="diag-terminal-panel" id="diag-live-log-card" style="display:block;">
+        <div class="diag-terminal-panel ops-heatmap-card" id="diag-live-log-card" style="display:block;padding:14px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
-                <span class="diag-section-label">Live Logs</span>
+                <span class="ops-section-title" style="margin:0;">Live Diagnostic Event Terminal</span>
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <span id="diag-log-status" style="font-size:10px;color:#8a8aaa;">Stopped</span>
-                    <button class="diag-btn" id="diag-log-toggle-btn" onclick="diagToggleLogMonitor()">Start</button>
-                    <button class="diag-btn" onclick="diagClearLiveLogs()">Clear</button>
+                    <span id="diag-log-status" style="font-size:10px;font-family:var(--f-mono);color:var(--muted);">Stopped</span>
+                    <button class="diag-btn" id="diag-log-toggle-btn" onclick="diagToggleLogMonitor()">Start Live Stream</button>
+                    <button class="diag-btn" onclick="diagClearLiveLogs()">Clear Log</button>
                 </div>
             </div>
-            <div id="diag-live-log" class="diag-terminal-content" style="max-height:350px;overflow-y:auto;"></div>
+            <div id="diag-live-log" class="diag-terminal-content" style="max-height:350px;overflow-y:auto;font-family:var(--f-mono);font-size:11px;"></div>
         </div>
     </div>
 </div>
 
 <!-- ── Old Data View ── -->
-<div id="old-data-view" style="display: none; flex-direction: column; gap: 16px; flex-grow: 1;">
-    <div class="section-label">Old Data Archive Search</div>
-
-    <div id="od-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;min-height:400px;text-align:center;">
-        <svg fill="none" stroke="var(--muted)" stroke-width="1.5" viewBox="0 0 24 24" style="width:48px;height:48px;margin-bottom:16px;">
-            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-        </svg>
-        <h2 style="margin:0 0 8px;font-weight:500;">Archive Search</h2>
-        <p style="color:var(--muted);margin:0 0 24px;font-size:14px;">Search archived BDR snapshots by one or more serial numbers</p>
-        <div style="display:flex;gap:8px;align-items:center;width:100%;max-width:500px;">
-            <textarea id="od-search-input" class="sn-search-input" placeholder="Enter serial number(s)..." style="flex:1;font-family:var(--f-mono);min-height:56px;height:56px;" oninput="syncOldDataSearchInputs(this)" onkeydown="oldDataHandleKeydown(event)"></textarea>
-            <button class="upload-btn" onclick="searchOldData()" style="padding:8px 20px;font-size:13px;font-weight:600;">Search</button>
-            <button class="floorplan-toggle" onclick="clearOldDataSearch()" style="padding:8px 16px;font-size:13px;font-weight:600;">Clear</button>
+<div id="old-data-view" class="mes-workspace-body" style="display: none;">
+    <div class="ops-command-bar">
+        <div class="ops-command-left">
+            <span class="ops-section-title" style="margin:0;">Archived BDR Snapshots Workstation</span>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin:8px 0 0;">Partial matches supported. Separate multiple serials with commas, semicolons, or <strong>Shift+Enter</strong>. Searches across all archived machine snapshots.</p>
-    </div>
-
-    <div id="od-content" style="display:none;flex-direction:column;gap:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <textarea id="od-search-input-2" class="sn-search-input" placeholder="Enter serial number(s)..." style="font-family:var(--f-mono);width:300px;" oninput="syncOldDataSearchInputs(this)" onkeydown="oldDataHandleKeydown(event)"></textarea>
-                <button class="upload-btn" onclick="searchOldData()" style="padding:6px 16px;font-size:12px;font-weight:600;">Search</button>
-                <button class="floorplan-toggle" onclick="clearOldDataSearch()" style="padding:6px 14px;font-size:12px;font-weight:600;">Clear</button>
-            </div>
-            <span id="od-result-count" style="font-size:12px;color:var(--muted);"></span>
-            <button class="floorplan-toggle" onclick="exportOldDataCSV()" title="Export results as CSV" style="color:var(--ok);">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Export CSV
+        <div class="ops-command-right">
+            <button class="export-btn" onclick="exportOldDataCSV()" title="Export results as CSV" style="border-color:var(--border);gap:6px;padding:5px 12px;">
+                <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span style="font-size:11px;font-weight:600;">Export Archive CSV</span>
             </button>
         </div>
-        <div id="od-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <span class="chip" id="od-index-status" style="font-size:11px;color:var(--muted);"></span>
-            <span class="chip" id="od-search-time" style="font-size:11px;color:var(--muted);"></span>
+    </div>
+
+    <!-- Empty Search Console -->
+    <div id="od-empty" class="ops-heatmap-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;min-height:360px;text-align:center;padding:32px;">
+        <svg fill="none" stroke="var(--blue)" stroke-width="1.5" viewBox="0 0 24 24" style="width:48px;height:48px;margin-bottom:16px;">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <h2 style="margin:0 0 8px;font-weight:700;">Archive Search Console</h2>
+        <p style="color:var(--muted);margin:0 0 24px;font-size:13px;max-width:500px;">Search historical BDR snapshots across all archived machine datasets by serial number(s).</p>
+        <div style="display:flex;gap:8px;align-items:center;width:100%;max-width:560px;">
+            <textarea id="od-search-input" class="sn-search-input" placeholder="Enter serial number(s)..." style="flex:1;font-family:var(--f-mono);min-height:56px;height:56px;padding:10px 14px;" oninput="syncOldDataSearchInputs(this)" onkeydown="oldDataHandleKeydown(event)"></textarea>
+            <button class="sn-scan-btn" onclick="searchOldData()" style="padding:16px 24px;font-size:13px;font-weight:700;">SEARCH</button>
+            <button class="export-btn" onclick="clearOldDataSearch()" style="padding:16px 16px;font-size:13px;font-weight:600;border-color:var(--border);">Clear</button>
         </div>
-        <div id="od-results" style="overflow-x:auto;">
-            <div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;" id="od-loading">Searching...</div>
+        <p style="color:var(--muted);font-size:11px;margin:12px 0 0;font-family:var(--f-mono);">Separate multiple serials with commas or Shift+Enter. Partial matching supported.</p>
+    </div>
+
+    <!-- Search Results View -->
+    <div id="od-content" style="display:none;flex-direction:column;gap:16px;">
+        <div class="ops-command-bar">
+            <div class="ops-command-left" style="flex:1;">
+                <textarea id="od-search-input-2" class="sn-search-input" placeholder="Enter serial number(s)..." style="font-family:var(--f-mono);width:320px;height:36px;min-height:36px;padding:6px 12px;" oninput="syncOldDataSearchInputs(this)" onkeydown="oldDataHandleKeydown(event)"></textarea>
+                <button class="sn-scan-btn" onclick="searchOldData()" style="padding:8px 16px;font-size:12px;font-weight:700;">SEARCH</button>
+                <button class="export-btn" onclick="clearOldDataSearch()" style="padding:8px 14px;font-size:12px;font-weight:600;border-color:var(--border);">Clear</button>
+            </div>
+            <div class="ops-command-right">
+                <span id="od-result-count" style="font-size:12px;font-weight:700;font-family:var(--f-mono);color:var(--text);"></span>
+            </div>
+        </div>
+
+        <div id="od-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <span class="chip" id="od-index-status" style="font-size:11px;font-family:var(--f-mono);color:var(--text2);"></span>
+            <span class="chip" id="od-search-time" style="font-size:11px;font-family:var(--f-mono);color:var(--muted);"></span>
+        </div>
+
+        <div class="ops-table-card">
+            <div id="od-results" style="overflow-x:auto;">
+                <div style="text-align:center;padding:32px;color:var(--muted);font-size:13px;" id="od-loading">Searching...</div>
+            </div>
         </div>
     </div>
 </div>
+
+    <footer>
+        <div id="f-session"></div>
+        <div class="mono" id="f-fw" style="visibility: hidden;"></div>
+        <div id="f-slots"></div>
+    </footer>
 
 <!-- Duplicate Serials Modal Overlay -->
 <div class="modal-overlay" id="dups-modal-overlay">
@@ -802,9 +1001,22 @@
     </div>
 </div>
 
+<!-- Command Palette (Ctrl+K) -->
+<div id="command-palette-overlay" onclick="if(event.target===this) toggleCommandPalette()">
+    <div class="cmd-palette">
+        <div class="cmd-palette-input-wrapper">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 12px; color: var(--muted);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="cmd-palette-input" class="cmd-palette-input" placeholder="Search rings, machines, actions (Ctrl+K)..." autocomplete="off" oninput="filterCommandPalette()">
+            <span style="font-size:10px; font-family:var(--f-mono); color:var(--muted); background:var(--surface); border:1px solid var(--border); padding:2px 6px; border-radius:4px;">ESC</span>
+        </div>
+        <div class="cmd-palette-results" id="cmd-palette-results">
+            <!-- Populated via JS -->
+        </div>
+    </div>
+</div>
 
-
-<!-- Diagnostics Custom Styles -->
+    </div> <!-- end mes-workspace-container -->
+</div> <!-- end mes-app-layout -->
 
 <!-- React entry (disabled until migration begins) -->
 <!-- <script type="module" src="/src/main.jsx"></script> -->

@@ -80,7 +80,10 @@ def migrate():
     insert_query = """
         INSERT INTO archive_entries (
             serial_number, serial_lower, machine, state, machine_avg_bdr, bdr,
-            snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at, content
+            snapshots, total_cycles, completed_cycles, start_time, last_update, saved_at,
+            date, time, slot, battery_current, firmware_version, ring_mac, ring_name,
+            avg_bdr, avg_bdr_is_stale, avg_bdr_is_estimated, stored_avg_bdr,
+            inter_cycle_avg_bdr, test_start, phase, cycle, completed_workouts
         ) VALUES %s
         ON CONFLICT (serial_number, machine, saved_at) DO NOTHING
     """
@@ -97,7 +100,6 @@ def migrate():
                 if not records:
                     continue
                     
-                # Prepare bulk data
                 bulk_data = []
                 for rec in records:
                     bulk_data.append((
@@ -105,7 +107,7 @@ def migrate():
                         str(rec.get("serial_number", "")).lower(),
                         rec.get("machine"),
                         rec.get("state"),
-                        rec.get("machine_avg_bdr"),
+                        rec.get("machine_avg_bdr") or rec.get("avg_bdr"),
                         rec.get("bdr"),
                         rec.get("snapshots"),
                         rec.get("total_cycles"),
@@ -113,7 +115,22 @@ def migrate():
                         rec.get("start_time"),
                         rec.get("last_update"),
                         rec.get("saved_at"),
-                        json.dumps(rec)
+                        rec.get("date"),
+                        rec.get("time"),
+                        rec.get("slot"),
+                        rec.get("battery_current"),
+                        rec.get("firmware_version"),
+                        rec.get("ring_mac"),
+                        rec.get("ring_name"),
+                        rec.get("avg_bdr"),
+                        rec.get("avg_bdr_is_stale", False),
+                        rec.get("avg_bdr_is_estimated", False),
+                        rec.get("stored_avg_bdr"),
+                        rec.get("inter_cycle_avg_bdr"),
+                        rec.get("test_start"),
+                        rec.get("phase"),
+                        rec.get("cycle"),
+                        rec.get("completed_workouts"),
                     ))
                 
                 # Bulk insert

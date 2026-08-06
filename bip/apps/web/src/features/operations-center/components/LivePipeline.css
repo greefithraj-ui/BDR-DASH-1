@@ -1,0 +1,53 @@
+.opsc-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.opsc-pipeline-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.opsc-pipeline-stage:hover {
+  background: var(--bg-surface-hover);
+}
+
+.opsc-pipeline-stage-count {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.opsc-pipeline-stage-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}
+
+/* Tokens */
+.opsc-pipeline-stage.assigned .opsc-pipeline-stage-count { color: #f59e0b; }
+.opsc-pipeline-stage.inspection .opsc-pipeline-stage-count { color: #3b82f6; }
+.opsc-pipeline-stage.passed .opsc-pipeline-stage-count { color: #10b981; }
+.opsc-pipeline-stage.failed .opsc-pipeline-stage-count { color: #ef4444; }
+.opsc-pipeline-stage.pending-removal .opsc-pipeline-stage-count { color: #ef4444; }
+.opsc-pipeline-stage.removed .opsc-pipeline-stage-count { color: var(--text-muted); }
+
+.opsc-pipeline-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  opacity: 0.5;
+}

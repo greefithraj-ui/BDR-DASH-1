@@ -1,0 +1,31 @@
+.opsc-dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg-default);
+  overflow: hidden;
+}
+
+.opsc-split-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.opsc-pane-left {
+  width: 45%;
+  min-width: 400px;
+  max-width: 700px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
+}
+
+.opsc-pane-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-default);
+}

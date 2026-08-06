@@ -1,0 +1,35 @@
+{
+  "saved_at": "2026-08-01T10:00:00.000000+05:30",
+  "slots": {
+    "9": {
+      "state": "ASSIGNED",
+      "ring_mac": "E6:22:33:44:55:99",
+      "ring_name": "UH_E62233445599",
+      "serial_number": "RP-CH3-P18-WD-PG07-0009000",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 0,
+      "charging_current_ma": 0.0,
+      "bdr_battery_history": []
+    },
+    "10": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "E7:22:33:44:55:10",
+      "ring_name": "UH_E72233445510",
+      "serial_number": "RA-CH3-LFK-W1-AG07-0001010",
+      "product": "AIR",
+      "firmware_version": "02.01.33.03",
+      "battery_current": 70,
+      "charging_current_ma": 5.2,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:40:00.000000+05:30",
+          70,
+          5.2,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    }
+  }
+}

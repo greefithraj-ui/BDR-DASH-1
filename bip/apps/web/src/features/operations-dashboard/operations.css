@@ -1,0 +1,356 @@
+/* Operations Command Center Layout & Component Styles */
+
+.ops-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.ops-loading {
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+/* Header */
+.ops-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  background-color: var(--surface-card, #1e293b);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 0.5rem;
+}
+
+.ops-header__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ops-header__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin: 0;
+  color: var(--text-primary, #f8fafc);
+}
+
+.ops-header__subtitle {
+  font-size: 0.9rem;
+  margin: 0;
+  color: var(--text-muted, #94a3b8);
+}
+
+.ops-header__status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.ops-header__badge-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ops-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.ops-header__live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #34d399;
+}
+
+.ops-header__pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #34d399;
+  box-shadow: 0 0 8px #34d399;
+}
+
+/* Section Header */
+.ops-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color, #334155);
+}
+
+.ops-panel-header h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.025em;
+}
+
+.ops-panel-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+/* Live Pipeline */
+.ops-pipeline-card {
+  padding: 1.5rem;
+}
+
+.ops-pipeline-track {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.ops-pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 180px;
+}
+
+.ops-pipeline-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background-color: var(--surface-element, #0f172a);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 0.375rem;
+}
+
+.ops-pipeline-box__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ops-pipeline-box__name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.ops-pipeline-box__status {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #cbd5e1);
+  font-weight: 500;
+}
+
+.ops-pipeline-box__desc {
+  font-size: 0.75rem;
+  color: var(--text-muted, #64748b);
+}
+
+.ops-pipeline-arrow {
+  font-size: 1.2rem;
+  color: var(--text-muted, #64748b);
+  user-select: none;
+}
+
+/* Two Column Layout */
+.ops-dashboard__two-column {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 1024px) {
+  .ops-dashboard__two-column {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Urgent Exceptions */
+.ops-exceptions-card {
+  padding: 1.5rem;
+}
+
+.ops-exceptions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ops-exception-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: 0.375rem;
+  background-color: var(--surface-element, #0f172a);
+  border-left: 4px solid var(--border-color, #64748b);
+}
+
+.ops-exception-item--danger {
+  border-left-color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.05);
+}
+
+.ops-exception-item--warning {
+  border-left-color: #f59e0b;
+  background-color: rgba(245, 158, 11, 0.05);
+}
+
+.ops-exception-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ops-exception-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.ops-exception-reason {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #cbd5e1);
+  margin: 0;
+}
+
+.ops-exception-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+}
+
+.ops-exception-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+/* Machine Queue */
+.ops-machines-card {
+  padding: 1.5rem;
+}
+
+.ops-table-wrapper {
+  overflow-x: auto;
+}
+
+.ops-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.ops-table th,
+.ops-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color, #334155);
+}
+
+.ops-table th {
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ops-table-row--clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.ops-table-row--clickable:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.ops-cell--bold {
+  font-weight: 600;
+}
+
+.ops-cell--monospace {
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+/* Recent Events */
+.ops-events-card {
+  padding: 1.5rem;
+}
+
+.ops-events-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ops-event-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--surface-element, #0f172a);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 0.375rem;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.ops-event-time {
+  font-family: monospace;
+  color: var(--text-muted, #94a3b8);
+  min-width: 70px;
+}
+
+.ops-event-type {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.ops-event-target {
+  font-weight: 500;
+}
+
+.ops-event-machine {
+  color: var(--text-muted, #94a3b8);
+}
+
+.ops-event-msg {
+  color: var(--text-secondary, #cbd5e1);
+  flex: 1;
+}
+
+/* Utility Links */
+.ops-action-link,
+.ops-ring-link {
+  color: var(--primary-color, #38bdf8);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.ops-action-link:hover,
+.ops-ring-link:hover {
+  text-decoration: underline;
+}
+
+.ops-empty-text {
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.9rem;
+  margin: 0;
+}

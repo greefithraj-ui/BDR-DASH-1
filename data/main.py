@@ -1365,6 +1365,13 @@ def main():
         bg_both_loop(config, BG_BOTH_LOG, BG_BOTH_PID)
         return 0
     if "--bg-api" in sys.argv:
+        if "--start-pg" in sys.argv:
+            from bdr import _pg_ensure
+            print("[main] Ensuring PostgreSQL is running...")
+            if _pg_ensure():
+                print("[main] PostgreSQL ready.")
+            else:
+                print("[main] PostgreSQL failed to start.")
         bg_api_loop(BG_API_LOG, BG_API_PID)
         return 0
     if "--bg-logs" in sys.argv:

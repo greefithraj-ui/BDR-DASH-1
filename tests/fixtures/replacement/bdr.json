@@ -1,0 +1,43 @@
+{
+  "saved_at": "2026-08-01T10:00:00.000000+05:30",
+  "slots": {
+    "1": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "ED:22:33:44:55:99",
+      "ring_name": "UH_ED2233445599",
+      "serial_number": "RP-CH3-P18-WD-PA10-0009999",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 58,
+      "charging_current_ma": 7.7,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:50:00.000000+05:30",
+          58,
+          7.7,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    },
+    "2": {
+      "state": "BDR_RUNNING",
+      "ring_mac": "EE:22:33:44:55:02",
+      "ring_name": "UH_EE2233445502",
+      "serial_number": "RP-CH3-P18-WD-PG07-0005212",
+      "product": "PRO",
+      "firmware_version": "05.24.34.52",
+      "battery_current": 49,
+      "charging_current_ma": 4.6,
+      "bdr_battery_history": [
+        [
+          "2026-08-01T09:50:00.000000+05:30",
+          49,
+          4.6,
+          "LFXO-FullSwing",
+          -6
+        ]
+      ]
+    }
+  }
+}

@@ -3,7 +3,8 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.egg-info/
-data/__pycache__/
+.venv/
+venv/
 
 # Node dependencies
 node_modules/
@@ -25,13 +26,16 @@ RUN/
 *.pid
 .run_pids
 
-# PostgreSQL local data
+# PostgreSQL & Large Databases
 pgdata/
+data/archive.db
+*.sqlite
+*.db
 
-# PM2 logs
+# PM2 logs & Scratch
 logs/
+scratch/
 
 # OS junk
 Thumbs.db
 .DS_Store
-data/archive.db 

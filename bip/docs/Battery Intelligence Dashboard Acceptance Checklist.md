@@ -1,0 +1,35 @@
+# Battery Intelligence Dashboard Acceptance Checklist
+
+- [x] Battery Intelligence Dashboard implemented only.
+- [x] Executive Dashboard not modified.
+- [x] Providers not modified.
+- [x] Backend not modified.
+- [x] Database not modified.
+- [x] Existing APIs not modified.
+- [x] Design system not modified.
+- [x] Feature folder created.
+- [x] Types created.
+- [x] Mock provider created.
+- [x] Hook created.
+- [x] Components created.
+- [x] Battery Status Overview includes all required status metrics.
+- [x] Machine Health Summary present.
+- [x] Ring State Distribution present.
+- [x] Active Machine Overview present.
+- [x] Battery Lifecycle Overview present.
+- [x] Collector Status mock panel present.
+- [x] Pending Removal Monitor mock panel present.
+- [x] Recent Battery Events mock panel present.
+- [x] System Health Panel present.
+- [x] Placeholder chart containers only.
+- [x] No production data added.
+- [x] No SQL added.
+- [x] No database query added.
+- [x] No FastAPI integration added.
+- [x] No BIC integration added.
+- [x] No AI integration added.
+- [x] No reports implemented.
+- [x] Build verified.
+- [x] Routing verified.
+- [x] Responsive CSS breakpoints verified.
+- [x] Phase 3 not started.
