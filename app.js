@@ -80,7 +80,6 @@ let ringsKpiFilter = '';
 let ringsStatusColors = {};
 let chargerStatusByMachine = {};
 let chargerStatusFetches = {};
-const RINGS_COLOR_PALETTE = ['#8B5CF6','#EC4899','#14B8A6','#F97316','#06B6D4','#84CC16','#A855F7','#E11D48','#0EA5E9','#D946EF','#10B981','#F59E0B'];
 
 function normalizeAqcMachineName(name) {
   return String(name || '').trim().toLowerCase().replace(/\s+/g, '-').replace(/^aqc-?0?(\d)$/i, 'aqc-0$1');
@@ -1638,7 +1637,6 @@ let pendingRingsLowerKey = null;
 let pendingRingsLowerStableReads = 0;
 let bdrFetchInFlight = false;
 let ringsFetchInFlight = false;
-const LOWER_SNAPSHOT_STABLE_READS_REQUIRED = 2;
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
     const controller = new AbortController();
@@ -4485,8 +4483,6 @@ const FP_ZONE_STYLES = {
   D: { labelColor:'#534AB7', rectFill:'#EEEDFE', rectStroke:'#7F77DD', label:'Zone D', labelX:686, labelY:20 },
 };
 
-const FP_AVAIL_FILL = '#34D399';
-const FP_AVAIL_STROKE = '#059669';
 const FP_CUSTOM_NAMES_KEY = 'bdr_fp_names';
 const FP_BLANK = '__NONE__';
 
@@ -5991,7 +5987,6 @@ function buildReportHTML() {
 
   let totalSlots = 0;
   let totalRunning = 0, totalPassed = 0, totalFailed = 0, totalEmpty = 0;
-  const machineIssues = [];
 
   machineNames.forEach(name => {
     const md = ALL_MACHINE_DATA[name];

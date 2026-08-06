@@ -29,6 +29,9 @@ RUN/
 # PostgreSQL & Large Databases
 pgdata/
 data/archive.db
+data/archive.db-wal
+data/archive.db-shm
+data/archive_entries_backup_*.dump
 *.sqlite
 *.db
 
