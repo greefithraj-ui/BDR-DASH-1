@@ -211,6 +211,31 @@
       "name": "aqc-44",
       "user": "aqc-44",
       "ip": "172.16.18.60"
+    },
+    {
+      "name": "aqc-49",
+      "user": "aqc-49",
+      "ip": "172.16.18.126"
+    },
+    {
+      "name": "aqc-50",
+      "user": "aqc-50",
+      "ip": "172.16.18.128"
+    },
+    {
+      "name": "aqc-51",
+      "user": "aqc-51",
+      "ip": "172.16.18.127"
+    },
+    {
+      "name": "aqc-52",
+      "user": "aqc-52",
+      "ip": "172.16.18.133"
+    },
+    {
+      "name": "aqc-53",
+      "user": "aqc-53",
+      "ip": "172.16.18.132"
     }
   ],
   "destination_bdr": "D:\\BDR\\DESTINATION",

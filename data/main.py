@@ -808,6 +808,7 @@ def bg_download_loop(config, log_file, pid_file, remote_file=REMOTE_FILE, title=
     bg_log(log_file, f"Background {title} loop started")
     last_cycle = time.time()
     while True:
+        config = load_config()
         try:
             run_with_timeout(download_all, timeout=50, config=config, remote_file=remote_file)
             last_cycle = time.time()
@@ -826,6 +827,7 @@ def bg_import_loop(config, log_file, pid_file):
     pid_file.write_text(str(os.getpid()))
     bg_log(log_file, "Background database import loop started")
     while True:
+        config = load_config()
         try:
             bdr_dest = config.get("destination_bdr", config["destination"])
             rings_dest = config.get("destination_rings", config["destination"])
@@ -901,6 +903,7 @@ def bg_both_loop(config, log_file, pid_file):
     bg_log(log_file, "Background Both (download + import) loop started")
     last_cycle = time.time()
     while True:
+        config = load_config()
         try:
             run_with_timeout(download_both, timeout=55, config=config)
             last_cycle = time.time()
@@ -1056,6 +1059,7 @@ def bg_log_collect_loop(config, log_file, pid_file):
     pid_file.write_text(str(os.getpid()))
     bg_log(log_file, "Background log collection loop started (every 30 min)")
     while True:
+        config = load_config()
         try:
             collect_all_machine_logs(config)
             bg_log(log_file, f"Log collection cycle completed, waiting {AUTO_LOG_COLLECT_INTERVAL_SECONDS}s...")
@@ -1131,7 +1135,6 @@ def bg_api_loop(log_file, pid_file):
         sys.path.insert(0, str(_PARENT))
         import uvicorn
         from api import app
-        config = load_config()
 
         def run_server():
             uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
@@ -1149,6 +1152,7 @@ def bg_api_loop(log_file, pid_file):
             try:
                 bg_log(log_file, "Starting background data update cycle...")
                 try:
+                    config = load_config()
                     run_with_timeout(download_both, timeout=55, config=config)
                     last_successful_cycle = time.time()
                     bg_log(log_file, "Auto-update cycle completed successfully")

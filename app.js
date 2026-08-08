@@ -63,10 +63,12 @@ function getAqcMachineNames(names = Object.keys(ALL_MACHINE_DATA)) {
 // ── View Switcher: BDR Dashboard / Ring Slots ──
 
 let currentView = 'bdr';
+let isDrilldownActive = false;
 let _serialBrowserFilteredResults = [];
 let _serialBrowserCategoryFilter = '';
 let _serialBrowserBulkMode = false;
 let ringsData = [];
+let ringsAssignedTimes = {};
 let ringsFetchCompleted = false;
 let ringsDirHandle = null;
 let ringsFileHashes = new Map();
@@ -395,6 +397,8 @@ async function triggerSlotAWM(machine, slot, action, statusId, button) {
 
 function switchView(view) {
   currentView = view;
+  const ws = document.querySelector('.mes-workspace-container');
+  if (ws) ws.classList.toggle('ws-non-bdr', view !== 'bdr');
   const bdrContent = document.getElementById('dashboard-content');
   const ringsView = document.getElementById('rings-view');
   const dataVizView = document.getElementById('data-viz-view');
@@ -644,6 +648,13 @@ function ringsRenderGrid() {
   const searchEl = document.getElementById('rings-search');
   const q = (searchEl?.value || '').toLowerCase();
 
+  // Determine removed slots for selected machine
+  let ringsRemovedSet = new Set();
+  if (ringsSelectedMachine) {
+    const norm = normalizeAqcMachineName(ringsSelectedMachine);
+    ringsRemovedSet = removedSlotsByMachine[norm] || new Set();
+  }
+
   // Set machine name label and count
   const machineLabel = document.getElementById('rings-grid-machine-label');
   const countLabel = document.getElementById('rings-grid-count-label');
@@ -651,15 +662,8 @@ function ringsRenderGrid() {
     machineLabel.textContent = ringsSelectedMachine ? ringsSelectedMachine.toUpperCase() : 'All Machines';
   }
   if (countLabel) {
-    const occupiedCount = dataForLookup.filter(isOccupiedRingSlotRecord).length;
+    const occupiedCount = dataForLookup.filter(d => isOccupiedRingSlotRecord(d) && !ringsRemovedSet.has(String(d.slot))).length;
     countLabel.textContent = occupiedCount + ' / ' + occupiedCount + ' slots';
-  }
-
-  // Determine removed slots for selected machine
-  let ringsRemovedSet = new Set();
-  if (ringsSelectedMachine) {
-    const norm = normalizeAqcMachineName(ringsSelectedMachine);
-    ringsRemovedSet = removedSlotsByMachine[norm] || new Set();
   }
 
   // 64 slots in 16x4 grid
@@ -692,7 +696,7 @@ function ringsRenderGrid() {
     const el = document.createElement('div');
     el.className = 'slot-cell ' + cls + (dimmed ? ' ring-dimmed' : '');
     el.dataset.slot = key;
-    el.textContent = key;
+    el.innerHTML = key + slotBadgeHtml(d ? d.serial_number : '--');
     el.onclick = d ? () => ringsOpenDetail(d, key, el) : null;
     grid.appendChild(el);
   }
@@ -885,6 +889,21 @@ function ringsSearchSerial(value) {
   alert('Serial number not found in any ring machine.');
 }
 
+function ringAssignedTimestamp(d) {
+  const e = ringsAssignedTimes[d.file] && ringsAssignedTimes[d.file][d.slot];
+  if (e && e.serial === d.serial_number && e.ts) {
+    const t = new Date(e.ts);
+    if (!isNaN(t.getTime())) return t;
+  }
+  if (d.queued_at) {
+    const t = new Date(d.queued_at);
+    if (!isNaN(t.getTime())) return t;
+  }
+  return null;
+}
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+
 function ringsExportCSV() {
   if (ringsData.length === 0) { alert('No data to export.'); return; }
   let filtered = ringsData;
@@ -892,8 +911,20 @@ function ringsExportCSV() {
   if (ringsStatusFilter && !ringsKpiFilter) filtered = filtered.filter(d => (d.state || '').toUpperCase() === ringsStatusFilter);
   if (ringsSelectedMachine) filtered = filtered.filter(d => d.file === ringsSelectedMachine);
   if (filtered.length === 0) { alert('No data matches current filters.'); return; }
-  const rows = [['Machine','Slot','Serial Number','MAC ID','Status','Date']];
-  filtered.forEach(d => rows.push([d.file, d.slot, d.serial_number, d.ring_mac, d.state, d.queued_at ? new Date(d.queued_at).toLocaleString() : '']));
+  const rows = [['Date','Time','Machine','Slot','SKU','Category','Battery %','Serial Number','MAC ID','Status']];
+  filtered.forEach(d => {
+    let batt = '';
+    const md = ALL_MACHINE_DATA && ALL_MACHINE_DATA[d.file];
+    if (md && md.slots) {
+      const s = md.slots[d.slot];
+      if (s && s.battery_current != null) batt = s.battery_current;
+    }
+    const cls = classifySerial(d.serial_number) || {};
+    const t = ringAssignedTimestamp(d);
+    const date = t ? t.getFullYear() + '-' + pad2(t.getMonth() + 1) + '-' + pad2(t.getDate()) : '';
+    const time = t ? pad2(t.getHours()) + ':' + pad2(t.getMinutes()) + ':' + pad2(t.getSeconds()) : '';
+    rows.push([date, time, d.file, d.slot, cls.sku || '', cls.category || '', batt, d.serial_number, d.ring_mac, d.state]);
+  });
   const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -953,7 +984,9 @@ async function ringsCheckChanges() {
 let dvBarChart = null;
 let dvCurrentCategory = null;
 let dvCurrentSku = null;
-let dvDrillChart = null;
+let modalChartInstance = null;
+let dvModalContext = null;
+let currentModalExportData = [];
 
 const DV_CATEGORIES = [
   { name: 'AIR',           color: '#38BDF8', cardClass: 'air-card' },
@@ -980,6 +1013,22 @@ function classifySerial(serial) {
   if ((parts[0] || '').toUpperCase() === 'RA') return { category: 'AIR', sku: modelCode || '--' };
   if ((parts[0] || '').toUpperCase() === 'RP') return { category: 'PRO', sku: modelCode || '--' };
   return null;
+}
+
+const SLOT_BADGE_DEFS = {
+  'PRO':           { key: 'pro',          label: 'PRO' },
+  'AIR':           { key: 'air',          label: 'AIR' },
+  'LUX':           { key: 'lux',          label: 'LUX' },
+  'WABI SABI':     { key: 'wabisabi',     label: 'WS' },
+  'RT CONVERSION': { key: 'rtconversion', label: 'RTC' }
+};
+
+function slotBadgeHtml(serial) {
+  const cls = classifySerial(String(serial || '').trim());
+  if (!cls) return '';
+  const def = SLOT_BADGE_DEFS[cls.category];
+  if (!def) return '';
+  return '<span class="slot-badge badge-' + def.key + '">' + def.label + '</span>';
 }
 
 function buildDataVizData() {
@@ -1021,9 +1070,15 @@ function renderDataViz() {
       content.style.display = 'none';
       return;
     }
+    if (isDrilldownActive || dvCurrentCategory) {
+      dvRefreshDrilldownSoft();
+      dvRefreshSerialsTab();
+      return;
+    }
     dvCurrentCategory = null;
     dvCurrentSku = null;
     renderDvMainView(data);
+    dvRefreshSerialsTab();
   } catch (e) {
     console.warn('Error in renderDataViz:', e);
     const empty = document.getElementById('dv-empty');
@@ -1041,6 +1096,8 @@ function renderDvMainView(data) {
       console.warn('renderDvMainView: data is null');
       return;
     }
+    dvCurrentCategory = null;
+    dvCurrentSku = null;
     const breadcrumb = document.getElementById('dv-breadcrumb');
     if (breadcrumb) {
       breadcrumb.innerHTML = '<span style="font-weight:600;color:var(--text);cursor:pointer;" onclick="renderDvMainView(buildDataVizData())">Categories</span>';
@@ -1053,9 +1110,9 @@ function renderDvMainView(data) {
     if (content) {
       content.innerHTML = '';
     }
-    if (dvDrillChart) { try { dvDrillChart.destroy(); } catch (e) {} dvDrillChart = null; }
     renderDvSummaryCards(data);
     renderDvCharts(data);
+    dvRenderCategoryBreakdown(data);
 
     DV_CATEGORIES.forEach(catDef => {
       const cat = catDef.name;
@@ -1178,6 +1235,94 @@ function dvDrillSlotState(ringRec) {
   return 'EMPTY';
 }
 
+function dvDrillRows(catName) {
+  const serials = dvDrillCategorySerials(catName);
+  const counts = { TOTAL: serials.length, RUNNING: 0, PASSED: 0, FAILED: 0, ASSIGNED: 0 };
+  const rows = serials.map(r => {
+    const st = dvDrillSlotState(r);
+    if (counts[st] != null) counts[st]++;
+    const slotData = dvDrillSlotFor(r.file, r.slot);
+    const workouts = slotData ? calculateCompletedCycleWorkouts(slotData) : [];
+    const avgBdr = slotData ? getSlotAvgBdr(slotData, workouts) : null;
+    const lastBatt = slotData && slotData.battery_current != null ? slotData.battery_current : null;
+    return {
+      serial: String(r.serial_number || '--'),
+      machine: String(r.file || '--'),
+      slot: String(r.slot == null ? '--' : r.slot),
+      state: st,
+      stateRaw: String(r.state || '--'),
+      workouts: workouts,
+      avgBdr: avgBdr,
+      battery: lastBatt,
+      hasCycle: !!slotData
+    };
+  });
+  return { rows: rows, counts: counts };
+}
+
+function dvDrillTableHtml(rows) {
+  const badgeCls = st => st === 'RUNNING' ? 'ok' : st === 'PASSED' ? 'pass' : st === 'FAILED' ? 'danger' : 'neutral';
+  if (!rows || rows.length === 0) {
+    return '<tr><td colspan="7" style="text-align:center;color:var(--muted);">No serials in this category</td></tr>';
+  }
+  return rows.map(r =>
+    '<tr>' +
+    '<td style="font-family:var(--f-mono);font-weight:600;">' + escapeHtml(r.serial) + '</td>' +
+    '<td>' + escapeHtml(r.machine) + '</td>' +
+    '<td>' + escapeHtml(r.slot) + '</td>' +
+    '<td><span class="badge ' + badgeCls(r.state) + '">' + r.state + '</span></td>' +
+    '<td>' + r.workouts.length + '</td>' +
+    '<td>' + (r.avgBdr != null ? r.avgBdr.toFixed(2) : '<span class="dv-drill-muted">—</span>') + '</td>' +
+    '<td>' + (r.battery != null ? r.battery.toFixed(2) + ' mA' : '<span class="dv-drill-muted">—</span>') + '</td>' +
+    '</tr>'
+  ).join('');
+}
+
+const DV_WORKOUT_MAX = 6;
+
+function dvWorkoutDistRows(catRows) {
+  const machines = {};
+  (catRows || []).forEach(r => {
+    const key = String(r.machine || '--');
+    if (!machines[key]) {
+      machines[key] = { occupied: 0, buckets: new Array(DV_WORKOUT_MAX + 1).fill(0) };
+    }
+    machines[key].occupied++;
+    const wc = (r.workouts && r.workouts.length) || 0;
+    machines[key].buckets[Math.min(wc, DV_WORKOUT_MAX)]++;
+  });
+  return Object.entries(machines).sort((a, b) =>
+    String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true })
+  );
+}
+
+function dvWorkoutDistBodyHtml(catRows) {
+  const rows = dvWorkoutDistRows(catRows);
+  if (rows.length === 0) {
+    return '<tr><td colspan="' + (DV_WORKOUT_MAX + 3) + '" style="text-align:center;color:var(--muted);padding:14px;">No serials with cycle data</td></tr>';
+  }
+  return rows.map(([machine, m]) => {
+    let tr = '<tr><td style="font-family:var(--f-mono);font-weight:600;">' + escapeHtml(machine) + '</td>' +
+      '<td>' + m.occupied + '</td>' +
+      '<td class="dv-wk-0">' + m.buckets[0] + '</td>';
+    for (let w = 1; w <= DV_WORKOUT_MAX; w++) {
+      tr += '<td' + (w === DV_WORKOUT_MAX ? ' class="dv-wk-6"' : '') + '>' + m.buckets[w] + '</td>';
+    }
+    tr += '</tr>';
+    return tr;
+  }).join('');
+}
+
+function dvWorkoutDistTableHtml(catRows) {
+  let head = '<thead><tr><th>Machine</th><th>Serials</th><th>No Workout</th>';
+  for (let w = 1; w <= DV_WORKOUT_MAX; w++) {
+    head += '<th' + (w === DV_WORKOUT_MAX ? ' class="dv-wk-6"' : '') + '>' + ordinal(w) + '</th>';
+  }
+  head += '</tr></thead><tbody>';
+  return '<table class="ca-table ca-table-compact dv-workout-dist-table">' +
+    head + dvWorkoutDistBodyHtml(catRows) + '</tbody></table>';
+}
+
 function renderDvKpiDrilldown(catName, color) {
   try {
     const data = buildDataVizData();
@@ -1198,133 +1343,690 @@ function renderDvKpiDrilldown(catName, color) {
     const content = document.getElementById('dv-category-content');
     if (content) content.innerHTML = '';
 
-    const serials = dvDrillCategorySerials(catName);
-    const total = serials.length;
-    const counts = { TOTAL: total, RUNNING: 0, PASSED: 0, FAILED: 0, ASSIGNED: 0 };
+    const { rows, counts } = dvDrillRows(catName);
     const statusColors = { RUNNING: '#3B82F6', PASSED: '#22C55E', FAILED: '#EF4444', ASSIGNED: '#F59E0B' };
-    const rows = serials.map(r => {
-      const st = dvDrillSlotState(r);
-      if (counts[st] != null) counts[st]++;
-      const slotData = dvDrillSlotFor(r.file, r.slot);
-      const workouts = slotData ? calculateCompletedCycleWorkouts(slotData) : [];
-      const avgBdr = slotData ? getSlotAvgBdr(slotData, workouts) : null;
-      const lastBatt = slotData && slotData.battery_current != null ? slotData.battery_current : null;
-      return {
-        serial: String(r.serial_number || '--'),
-        machine: String(r.file || '--'),
-        slot: String(r.slot == null ? '--' : r.slot),
-        state: st,
-        stateRaw: String(r.state || '--'),
-        workouts: workouts,
-        avgBdr: avgBdr,
-        battery: lastBatt,
-        hasCycle: !!slotData
-      };
-    });
 
-    const chip = (label, val, chipColor) =>
-      '<div class="dv-drill-chip" style="--drill-chip-accent:' + chipColor + ';"><span class="dv-drill-chip-label">' + label + '</span><span class="dv-drill-chip-value">' + val + '</span></div>';
+    const chip = (label, val, chipColor, st) => {
+      const clickable = st === 'RUNNING' || st === 'PASSED' || st === 'FAILED' || st === 'ASSIGNED';
+      const base = 'data-status="' + (st || '') + '"';
+      if (clickable) {
+        const fn = "dvOpenStatusModal('" + catName.replace(/'/g, "\\'") + "','" + st + "','" + color.replace(/'/g, "\\'") + "')";
+        return '<div class="dv-drill-chip dv-drill-chip-clickable" role="button" tabindex="0" ' + base +
+          ' title="View ' + label + ' units"' +
+          ' onclick="' + fn + '"' +
+          ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' + fn + '}"' +
+          ' style="--drill-chip-accent:' + chipColor + ';cursor:pointer;">' +
+          '<span class="dv-drill-chip-label">' + label + '</span><span class="dv-drill-chip-value">' + val + '</span></div>';
+      }
+      return '<div class="dv-drill-chip" ' + base + ' style="--drill-chip-accent:' + chipColor + ';">' +
+        '<span class="dv-drill-chip-label">' + label + '</span><span class="dv-drill-chip-value">' + val + '</span></div>';
+    };
 
     const statusRow = '<div class="dv-drill-status-row">' +
-      chip('Total', counts.TOTAL, color) +
-      chip('Running', counts.RUNNING, statusColors.RUNNING) +
-      chip('Passed', counts.PASSED, statusColors.PASSED) +
-      chip('Failed', counts.FAILED, statusColors.FAILED) +
-      chip('Assigned', counts.ASSIGNED, statusColors.ASSIGNED) +
+      chip('Total', counts.TOTAL, color, 'TOTAL') +
+      chip('Running', counts.RUNNING, statusColors.RUNNING, 'RUNNING') +
+      chip('Passed', counts.PASSED, statusColors.PASSED, 'PASSED') +
+      chip('Failed', counts.FAILED, statusColors.FAILED, 'FAILED') +
+      chip('Assigned', counts.ASSIGNED, statusColors.ASSIGNED, 'ASSIGNED') +
       '</div>';
 
-    const badgeCls = st => st === 'RUNNING' ? 'ok' : st === 'PASSED' ? 'pass' : st === 'FAILED' ? 'danger' : 'neutral';
-
-    const tableRows = rows.map(r =>
-      '<tr>' +
-      '<td style="font-family:var(--f-mono);font-weight:600;">' + escapeHtml(r.serial) + '</td>' +
-      '<td>' + escapeHtml(r.machine) + '</td>' +
-      '<td>' + escapeHtml(r.slot) + '</td>' +
-      '<td><span class="badge ' + badgeCls(r.state) + '">' + r.state + '</span></td>' +
-      '<td>' + r.workouts.length + '</td>' +
-      '<td>' + (r.avgBdr != null ? r.avgBdr.toFixed(2) : '<span class="dv-drill-muted">—</span>') + '</td>' +
-      '<td>' + (r.battery != null ? r.battery.toFixed(2) + ' mA' : '<span class="dv-drill-muted">—</span>') + '</td>' +
-      '</tr>'
-    ).join('');
-
     const serialTable =
-      '<div class="section-label" style="margin-bottom:8px;">Serials — Machine &amp; Slot</div>' +
+      '<div class="serials-actions" style="justify-content:space-between;margin-bottom:12px;">' +
+        '<div class="section-label" style="margin:0;">Serials &mdash; Machine &amp; Slot</div>' +
+        '<button id="btn-export-drill-serials" class="premium-export-btn" type="button">' +
+          '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>' +
+          '<span>Export CSV</span>' +
+        '</button>' +
+      '</div>' +
       '<div class="dv-drill-table-wrap">' +
       '<table class="ca-table dv-drill-table">' +
       '<thead><tr><th>Serial</th><th>Machine</th><th>Slot</th><th>Status</th><th>Workouts</th><th>Avg BDR</th><th>Current</th></tr></thead>' +
-      '<tbody>' + (tableRows || '<tr><td colspan="7" style="text-align:center;color:var(--muted);">No serials in this category</td></tr>') + '</tbody>' +
+      '<tbody>' + dvDrillTableHtml(rows) + '</tbody>' +
       '</table></div>';
 
     const cycleSection =
-      '<div class="section-label" style="margin-bottom:8px;">Cycle Analysis</div>' +
-      '<div class="dv-drill-cycle-grid">' +
-      '<div class="dv-drill-chart-box"><div class="dv-drill-chart-title">Workouts per Serial</div><div id="dv-drill-chart-1" style="height:220px;"></div></div>' +
-      '<div class="dv-drill-chart-box"><div class="dv-drill-chart-title">Avg BDR per Serial</div><div id="dv-drill-chart-2" style="height:220px;"></div></div>' +
+      '<div class="section-label" style="margin-bottom:8px;">Cycle Analysis &mdash; Workout Distribution (per Machine)</div>' +
+      '<div class="dv-drill-table-wrap">' + dvWorkoutDistTableHtml(rows, color) + '</div>';
+
+    const drillTabs =
+      '<div class="drill-sub-tabs" role="tablist">' +
+        '<button type="button" class="drill-sub-tab active" role="tab" aria-selected="true" data-target="drill-analytics">Analytics</button>' +
+        '<button type="button" class="drill-sub-tab" role="tab" aria-selected="false" data-target="drill-serials">Serials (' + rows.length + ')</button>' +
       '</div>';
 
-    content.innerHTML = statusRow + serialTable + cycleSection;
+    content.innerHTML = drillTabs +
+      '<div id="drill-analytics" class="drill-sub-panel">' + statusRow + cycleSection + '</div>' +
+      '<div id="drill-serials" class="drill-sub-panel" style="display:none;">' + serialTable + '</div>';
+
+    dvDrillExportRows = rows;
 
     renderDvSummaryCards(data, catName);
     renderDvCharts(data);
-
-    setTimeout(() => renderDvDrillCharts(rows, color), 30);
   } catch (e) {
     console.warn('Error in renderDvKpiDrilldown:', e);
   }
 }
 
-function renderDvDrillCharts(rows, color) {
-  try {
-    const el1 = document.getElementById('dv-drill-chart-1');
-    const el2 = document.getElementById('dv-drill-chart-2');
-    const themeMode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-    const withCycle = rows.filter(r => r.hasCycle);
-    const sortedByWorkouts = withCycle.slice().sort((a, b) => b.workouts.length - a.workouts.length).slice(0, 20);
-    const sortedByBdr = withCycle.slice().sort((a, b) => (b.avgBdr || 0) - (a.avgBdr || 0)).slice(0, 20);
+function dvSetDrillTab(target) {
+  const content = document.getElementById('dv-category-content');
+  if (!content) return;
+  content.querySelectorAll('.drill-sub-tab').forEach(b => {
+    const on = b.dataset.target === target;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  content.querySelectorAll('.drill-sub-panel').forEach(p => {
+    p.style.display = p.id === target ? 'block' : 'none';
+  });
+}
 
-    if (el1) {
-      if (dvDrillChart) { dvDrillChart.destroy(); dvDrillChart = null; }
-      if (sortedByWorkouts.length === 0) {
-        el1.innerHTML = '<div class="ar-empty">No cycle data for this category</div>';
-      } else {
-        dvDrillChart = new ApexCharts(el1, {
-          chart: { type: 'bar', height: 220, toolbar: { show: false } },
-          series: [{ name: 'Workouts', data: sortedByWorkouts.map(r => r.workouts.length) }],
-          xaxis: { categories: sortedByWorkouts.map(r => r.serial), labels: { style: { fontSize: '10px' } } },
-          colors: [color],
-          plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } },
-          legend: { show: false },
-          grid: getApexGrid(),
-          theme: { mode: themeMode },
-          tooltip: { y: { formatter: v => v + ' workouts' } }
-        });
-        dvDrillChart.render();
-      }
+function dvExportDrillSerialsCsv() {
+  if (!dvDrillExportRows || dvDrillExportRows.length === 0) {
+    dvFlashExportEmpty('btn-export-drill-serials');
+    return;
+  }
+  const csvContent = 'Serial,Machine,Slot,Status,Workouts,Avg BDR,Current mA\n' + dvDrillExportRows.map(r =>
+    [dvCsvEscape(r.serial), dvCsvEscape(r.machine), dvCsvEscape(r.slot), dvCsvEscape(r.state), r.workouts.length,
+     r.avgBdr != null ? r.avgBdr.toFixed(2) : '', r.battery != null ? r.battery.toFixed(2) : ''].join(',')
+  ).join('\n');
+  dvTriggerCsvDownload(csvContent, 'Export_' + String(dvCurrentCategory || 'Drill').replace(/[^A-Za-z0-9_-]+/g, '_') + '_Serials.csv');
+}
+
+function dvStatusUnits(catName, status) {
+  const rows = [];
+  (ringsData || []).forEach(r => {
+    const sn = String(r.serial_number || '').trim();
+    const cls = classifySerial(sn);
+    if (cls && cls.category === catName && dvDrillSlotState(r) === status) {
+      rows.push({
+        machine: String(r.file || '--'),
+        slot: String(r.slot == null ? '--' : r.slot),
+        serial: sn || '--'
+      });
     }
-    if (el2) {
-      if (sortedByBdr.length === 0) {
-        el2.innerHTML = '<div class="ar-empty">No cycle data for this category</div>';
-      } else {
-        const c2 = new ApexCharts(el2, {
-          chart: { type: 'bar', height: 220, toolbar: { show: false } },
-          series: [{ name: 'Avg BDR', data: sortedByBdr.map(r => r.avgBdr != null ? r.avgBdr : 0) }],
-          xaxis: { categories: sortedByBdr.map(r => r.serial), labels: { style: { fontSize: '10px' } } },
-          colors: [color],
-          plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } },
-          legend: { show: false },
-          grid: getApexGrid(),
-          theme: { mode: themeMode },
-          tooltip: { y: { formatter: v => v + ' %/hr' } }
-        });
-        c2.render();
-      }
+  });
+  rows.sort((a, b) => {
+    if (a.machine !== b.machine) return a.machine.localeCompare(b.machine, undefined, { numeric: true });
+    const na = parseInt(a.slot, 10), nb = parseInt(b.slot, 10);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return String(a.slot).localeCompare(String(b.slot), undefined, { numeric: true });
+  });
+  return rows;
+}
+
+function dvOpenStatusModal(catName, status, color) {
+  const modal = document.getElementById('dv-status-modal');
+  if (!modal) return;
+  isDrilldownActive = true;
+  dvModalContext = { catName: catName, status: status, color: color };
+  const rows = dvStatusUnits(catName, status);
+  currentModalExportData = rows;
+  const title = document.getElementById('dv-status-modal-title');
+  const subtitle = document.getElementById('dv-status-modal-subtitle');
+  const body = document.getElementById('dv-status-modal-body');
+  if (title) title.textContent = catName + ' - ' + status + ' Units';
+  if (subtitle) subtitle.textContent = 'Category: ' + catName + ' | Status: ' + status + ' | ' + rows.length + ' unit' + (rows.length === 1 ? '' : 's');
+  if (body) {
+    body.innerHTML = rows.length === 0
+      ? '<tr><td class="drilldown-empty" colspan="3">No units match ' + escapeHtml(catName) + ' / ' + escapeHtml(status) + '</td></tr>'
+      : rows.map(r =>
+          '<tr><td>' + escapeHtml(r.machine) + '</td><td>' + escapeHtml(r.slot) + '</td><td style="font-family:var(--f-mono);font-weight:600;">' + escapeHtml(r.serial) + '</td></tr>'
+        ).join('');
+  }
+  dvRenderAnalyticsSummary(rows);
+  dvSetModalTab('tab-analytics');
+  modal.style.display = 'flex';
+}
+
+function dvMixHex(hex, target, t) {
+  const a = parseInt(hex.slice(1), 16);
+  const b = parseInt(target.slice(1), 16);
+  const r = Math.round(((a >> 16) & 255) + ((((b >> 16) & 255) - ((a >> 16) & 255)) * t));
+  const g = Math.round(((a >> 8) & 255) + ((((b >> 8) & 255) - ((a >> 8) & 255)) * t));
+  const bl = Math.round((a & 255) + (((b & 255) - (a & 255)) * t));
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
+}
+
+function dvModalPalette(base, n) {
+  const themeMode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  const target = themeMode === 'dark' ? '#0B1220' : '#FFFFFF';
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : 0.5 * (1 - i / (n - 1));
+    out.push(dvMixHex(base, target, t));
+  }
+  return out;
+}
+
+function dvModalChartConfig(rows, status, fallbackColor) {
+  if (!rows || rows.length === 0) return null;
+  const freq = {};
+  rows.forEach(r => { freq[r.machine] = (freq[r.machine] || 0) + 1; });
+  const entries = Object.entries(freq).sort((a, b) =>
+    b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true })
+  );
+  const statusColors = { RUNNING: '#3B82F6', PASSED: '#22C55E', FAILED: '#EF4444', ASSIGNED: '#F59E0B' };
+  const chartColor = statusColors[status] || fallbackColor || '#0D9488';
+  const themeMode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  const labels = entries.map(e => e[0]);
+  return {
+    options: {
+      chart: {
+        type: 'bar',
+        height: 250,
+        toolbar: { show: false },
+        events: {
+          dataPointSelection: function(event, chartContext, config) {
+            dvOpenSkuDrilldown(config.w.globals.labels[config.dataPointIndex]);
+          }
+        }
+      },
+      series: [{ name: status + ' Units', data: entries.map(e => e[1]) }],
+      xaxis: { categories: labels, labels: { style: { fontSize: '11px' }, rotate: -45 } },
+      colors: dvModalPalette(chartColor, labels.length),
+      fill: {
+        type: 'gradient',
+        gradient: { shade: 'dark', type: 'vertical', shadeIntensity: 0.5, inverseColors: false, opacityFrom: 1, opacityTo: 0.8, stops: [0, 100] }
+      },
+      plotOptions: { bar: { borderRadius: 4, columnWidth: '45%', distributed: true } },
+      dataLabels: { enabled: true, position: 'top', offsetY: -6, style: { fontSize: '11px', fontWeight: 700, colors: ['#94A3B8'] } },
+      legend: { show: false },
+      grid: getApexGrid(),
+      theme: { mode: themeMode },
+      tooltip: { theme: 'dark', y: { formatter: v => v + (v === 1 ? ' unit' : ' units') } }
     }
-  } catch (e) {
-    console.warn('Error in renderDvDrillCharts:', e);
+  };
+}
+
+function renderDvModalChart(rows, catName, status, fallbackColor) {
+  const chartEl = document.getElementById('drilldown-modal-chart');
+  if (!chartEl) return;
+  if (modalChartInstance) {
+    try { modalChartInstance.destroy(); } catch (e) {}
+    modalChartInstance = null;
+  }
+  chartEl.innerHTML = '';
+  const cfg = dvModalChartConfig(rows, status, fallbackColor);
+  if (!cfg) {
+    chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">No data to chart</div>';
+    return;
+  }
+  modalChartInstance = new ApexCharts(chartEl, cfg.options);
+  modalChartInstance.render();
+}
+
+function dvUpdateModalChart(rows, status, fallbackColor) {
+  const chartEl = document.getElementById('drilldown-modal-chart');
+  if (!chartEl) return;
+  const cfg = dvModalChartConfig(rows, status, fallbackColor);
+  if (!cfg) {
+    if (modalChartInstance) {
+      try { modalChartInstance.destroy(); } catch (e) {}
+      modalChartInstance = null;
+    }
+    chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">No data to chart</div>';
+    return;
+  }
+  if (modalChartInstance) {
+    modalChartInstance.updateOptions({
+      series: cfg.options.series,
+      xaxis: cfg.options.xaxis,
+      colors: cfg.options.colors,
+      fill: cfg.options.fill
+    });
+  } else {
+    modalChartInstance = new ApexCharts(chartEl, cfg.options);
+    modalChartInstance.render();
   }
 }
 
+function dvCountStatuses(catName) {
+  const counts = { RUNNING: 0, PASSED: 0, FAILED: 0, ASSIGNED: 0 };
+  (ringsData || []).forEach(r => {
+    const sn = String(r.serial_number || '').trim();
+    const cls = classifySerial(sn);
+    if (cls && cls.category === catName) {
+      const st = dvDrillSlotState(r);
+      if (counts[st] != null) counts[st]++;
+    }
+  });
+  return counts;
+}
+
+function dvRefreshDrilldownSoft() {
+  try {
+    if (dvCurrentCategory) {
+      dvRefreshCategorySoft(dvCurrentCategory);
+    }
+    const data = buildDataVizData();
+    if (data) {
+      const total = Object.values(data).reduce((s, d) => s + d.count, 0);
+      const totalEl = document.querySelector('#dv-summary-cards .total-serials-card .metric-value');
+      if (totalEl) totalEl.textContent = total;
+      DV_CATEGORIES.forEach(catDef => {
+        const d = data[catDef.name];
+        const cardEl = document.querySelector('#dv-summary-cards .' + catDef.cardClass + ' .metric-value');
+        if (cardEl) cardEl.textContent = d ? d.count : 0;
+      });
+    }
+    if (dvModalContext) {
+      const { catName, status, color } = dvModalContext;
+      const rows = dvStatusUnits(catName, status);
+      currentModalExportData = rows;
+      const subtitle = document.getElementById('dv-status-modal-subtitle');
+      if (subtitle) {
+        subtitle.textContent = 'Category: ' + catName + ' | Status: ' + status + ' | ' + rows.length + ' unit' + (rows.length === 1 ? '' : 's');
+      }
+      const tbody = document.getElementById('dv-status-modal-body');
+      if (tbody) {
+        tbody.innerHTML = rows.length === 0
+          ? '<tr><td class="drilldown-empty" colspan="3">No units match ' + escapeHtml(catName) + ' / ' + escapeHtml(status) + '</td></tr>'
+          : rows.map(r =>
+              '<tr><td>' + escapeHtml(r.machine) + '</td><td>' + escapeHtml(r.slot) + '</td><td style="font-family:var(--f-mono);font-weight:600;">' + escapeHtml(r.serial) + '</td></tr>'
+            ).join('');
+      }
+      dvRenderAnalyticsSummary(rows);
+      dvUpdateModalChart(rows, status, color);
+    }
+  } catch (e) {
+    console.warn('Error in dvRefreshDrilldownSoft:', e);
+  }
+}
+
+function dvRefreshCategorySoft(catName) {
+  const content = document.getElementById('dv-category-content');
+  if (!content) return;
+  if (content.querySelector('.dv-drill-status-row')) {
+    dvRefreshKpiDrilldownSoft(catName);
+    return;
+  }
+  const data = buildDataVizData();
+  const catData = data && data[catName];
+  const color = dvCategoryColor(catName);
+  if (!catData || catData.count === 0) {
+    dvCurrentCategory = null;
+    dvCurrentSku = null;
+    renderDvMainView(data);
+    return;
+  }
+  if (dvCurrentSku) {
+    const freshCount = (catData.skus || {})[dvCurrentSku];
+    if (freshCount == null) {
+      dvCurrentSku = null;
+      renderDvCategory(catData, catName, color, data);
+    } else {
+      renderDvSku(dvCurrentSku, freshCount, color, catName);
+    }
+  } else {
+    renderDvCategory(catData, catName, color, data);
+  }
+}
+
+function dvRefreshKpiDrilldownSoft(catName) {
+  const content = document.getElementById('dv-category-content');
+  if (!content) return;
+  const { rows, counts } = dvDrillRows(catName);
+  const color = dvCategoryColor(catName);
+  content.querySelectorAll('.dv-drill-chip[data-status]').forEach(chip => {
+    const st = chip.dataset.status;
+    const val = st === 'TOTAL' ? counts.TOTAL : (st && counts[st] != null ? counts[st] : null);
+    if (val != null) {
+      const el = chip.querySelector('.dv-drill-chip-value');
+      if (el) el.textContent = val;
+    }
+  });
+  const tbody = content.querySelector('#drill-serials .dv-drill-table tbody');
+  if (tbody) tbody.innerHTML = dvDrillTableHtml(rows);
+  const wdBody = content.querySelector('#drill-analytics .dv-workout-dist-table tbody');
+  if (wdBody) wdBody.innerHTML = dvWorkoutDistBodyHtml(rows, color);
+  dvDrillExportRows = rows;
+  content.querySelectorAll('.drill-sub-tab[data-target="drill-serials"]').forEach(b => {
+    b.innerHTML = 'Serials (' + rows.length + ')';
+  });
+}
+
+function dvCloseStatusModal() {
+  isDrilldownActive = false;
+  dvModalContext = null;
+  if (modalChartInstance) {
+    try { modalChartInstance.destroy(); } catch (e) {}
+    modalChartInstance = null;
+  }
+  const modal = document.getElementById('dv-status-modal');
+  if (modal) modal.style.display = 'none';
+  dvCloseSkuDrilldown();
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    const sku = document.getElementById('sku-drilldown-overlay');
+    if (sku && sku.style.display === 'flex') {
+      dvCloseSkuDrilldown();
+      return;
+    }
+    const modal = document.getElementById('dv-status-modal');
+    if (modal && modal.style.display === 'flex') dvCloseStatusModal();
+  }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    const modal = document.getElementById('dv-status-modal');
+    if (!modal || modal.style.display !== 'flex') return;
+    const sku = document.getElementById('sku-drilldown-overlay');
+    if (sku && sku.style.display === 'flex') return;
+    const btns = Array.from(document.querySelectorAll('#dv-status-modal .tab-btn'));
+    const idx = btns.findIndex(b => b.classList.contains('active'));
+    if (idx === -1) return;
+    const next = e.key === 'ArrowRight' ? (idx + 1) % btns.length : (idx - 1 + btns.length) % btns.length;
+    dvSetModalTab(btns[next].dataset.target);
+    e.preventDefault();
+  }
+});
+
+function dvSetModalTab(target) {
+  const tabs = document.querySelectorAll('#dv-status-modal .tab-btn');
+  tabs.forEach(b => {
+    const isActive = b.dataset.target === target;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  ['tab-analytics', 'tab-serials'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = id === target ? 'block' : 'none';
+  });
+  if (target === 'tab-analytics') dvRevealAnalyticsTab();
+}
+
+function dvRevealAnalyticsTab() {
+  if (!dvModalContext) return;
+  const ctx = dvModalContext;
+  const rows = dvStatusUnits(ctx.catName, ctx.status);
+  currentModalExportData = rows;
+  renderDvModalChart(rows, ctx.catName, ctx.status, ctx.color);
+  dvRenderAnalyticsSummary(rows);
+}
+
+function dvAnalyticsSummaryHtml(rows) {
+  if (!rows || rows.length === 0) {
+    return '<tr><td class="drilldown-empty" colspan="3">No units to summarize</td></tr>';
+  }
+  const freq = {};
+  rows.forEach(r => { freq[r.machine] = (freq[r.machine] || 0) + 1; });
+  const entries = Object.entries(freq).sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }));
+  const total = rows.length;
+  return entries.map(([m, c]) =>
+    '<tr><td style="font-family:var(--f-mono);font-weight:600;">' + escapeHtml(m) + '</td><td>' + c + '</td><td>' + (total ? (c / total * 100).toFixed(1) : '0.0') + '%</td></tr>'
+  ).join('');
+}
+
+function dvRenderAnalyticsSummary(rows) {
+  const tbody = document.getElementById('analytics-summary-body');
+  if (!tbody) return;
+  tbody.innerHTML = dvAnalyticsSummaryHtml(rows);
+}
+
+function dvOpenSkuDrilldown(machine) {
+  const overlay = document.getElementById('sku-drilldown-overlay');
+  if (!overlay || !dvModalContext) return;
+  const ctx = dvModalContext;
+  const rows = dvStatusUnits(ctx.catName, ctx.status).filter(r => r.machine === machine);
+  const skuMap = {};
+  rows.forEach(r => {
+    const cls = classifySerial(String(r.serial || '--'));
+    const sku = cls && cls.sku ? cls.sku : 'Unknown';
+    skuMap[sku] = (skuMap[sku] || 0) + 1;
+  });
+  const entries = Object.entries(skuMap).sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
+  const total = rows.length;
+
+  const title = document.getElementById('sku-drilldown-title');
+  if (title) title.textContent = machine + ' \u2014 SKU Breakdown';
+  const subtitle = document.getElementById('sku-drilldown-subtitle');
+  if (subtitle) subtitle.textContent = ctx.catName + ' \u00b7 ' + ctx.status + ' \u00b7 ' + total + ' unit' + (total === 1 ? '' : 's');
+
+  const summary = document.getElementById('sku-drilldown-summary');
+  if (summary) {
+    summary.innerHTML = entries.length === 0
+      ? ''
+      : entries.map(([sku, c]) =>
+          '<span class="sku-chip"><span>' + escapeHtml(sku) + '</span><span class="sku-chip-count">' + c + '</span></span>'
+        ).join('');
+  }
+
+  const content = document.getElementById('sku-drilldown-content');
+  if (content) {
+    content.innerHTML = entries.length === 0
+      ? '<div class="drilldown-empty">No units match ' + escapeHtml(machine) + '</div>'
+      : '<table class="drilldown-table sku-drilldown-table">' +
+        '<thead><tr><th>SKU</th><th>Units</th><th>% Share</th></tr></thead>' +
+        '<tbody>' + entries.map(([sku, c]) =>
+          '<tr><td style="font-family:var(--f-mono);font-weight:600;">' + escapeHtml(sku) + '</td><td>' + c + '</td><td>' + (total ? (c / total * 100).toFixed(1) : '0.0') + '%</td></tr>'
+        ).join('') + '</tbody>' +
+        '</table>';
+  }
+
+  overlay.style.display = 'flex';
+}
+
+function dvCloseSkuDrilldown() {
+  const overlay = document.getElementById('sku-drilldown-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function dvBackToChart() {
+  dvCloseSkuDrilldown();
+}
+
+function dvCsvEscape(v) {
+  const s = String(v == null ? '' : v);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function dvTriggerCsvDownload(csvContent, filename) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function dvFlashExportEmpty(btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'No data';
+  setTimeout(() => { btn.disabled = false; btn.innerHTML = orig; }, 1200);
+}
+
+function dvExportSerialsCsv() {
+  const ctx = dvModalContext || {};
+  if (!currentModalExportData || currentModalExportData.length === 0) {
+    dvFlashExportEmpty('btn-export-serials');
+    return;
+  }
+  const csvContent = 'Machine,Slot,Serial Number\n' + currentModalExportData.map(r =>
+    [dvCsvEscape(r.machine), dvCsvEscape(r.slot), dvCsvEscape(r.serial)].join(',')
+  ).join('\n');
+  dvTriggerCsvDownload(csvContent, 'Export_' + String(ctx.catName || 'Drilldown').replace(/[^A-Za-z0-9_-]+/g, '_') + '_' + String(ctx.status || 'Units').replace(/[^A-Za-z0-9_-]+/g, '_') + '.csv');
+}
+
+(function initModalTabs() {
+  const tabsEl = document.querySelector('.modal-tabs');
+  if (tabsEl) {
+    tabsEl.addEventListener('click', function(e) {
+      const btn = e.target.closest && e.target.closest('.tab-btn');
+      if (!btn) return;
+      dvSetModalTab(btn.dataset.target);
+    });
+  }
+  const exportBtn = document.getElementById('btn-export-serials');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', function() {
+      if (exportBtn.disabled) return;
+      dvExportSerialsCsv();
+    });
+  }
+})();
+
+/* ── Data Viz master tabbed architecture ── */
+
+let currentAllSerialsExportData = [];
+let dvDrillExportRows = [];
+
+function dvSetVizTab(target) {
+  const content = document.getElementById('dv-content');
+  const btns = Array.from(document.querySelectorAll('.premium-nav-tabs .viz-tab-btn'));
+  const panels = Array.from(document.querySelectorAll('#dv-content .viz-tab-content'));
+  btns.forEach(b => {
+    const on = b.dataset.target === target;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  panels.forEach(p => {
+    const on = p.id === target;
+    p.classList.toggle('active', on);
+    p.style.display = on ? 'flex' : 'none';
+  });
+  if (content) content.setAttribute('data-active-tab', target);
+  if (target === 'viz-analysis') dvRenderAnalysisTab();
+  if (target === 'viz-serials') renderDvGlobalSerials();
+}
+
+function dvRenderAnalysisTab() {
+  if (dvPendingChartArgs) {
+    renderDvCharts(dvPendingChartArgs.data, dvPendingChartArgs.skuData);
+  }
+  window.dispatchEvent(new Event('resize'));
+}
+
+function dvRenderCategoryBreakdown(data) {
+  const body = document.getElementById('viz-category-breakdown-body');
+  if (!body) return;
+  const total = Object.values(data).reduce((s, d) => s + d.count, 0);
+  const rows = DV_CATEGORIES.map(catDef => {
+    const d = data[catDef.name];
+    if (!d || d.count === 0) return null;
+    const pct = total > 0 ? (d.count / total * 100).toFixed(1) : 0;
+    return '<tr>' +
+      '<td><span class="viz-cat-dot" style="background:' + catDef.color + ';"></span>' + escapeHtml(catDef.name) + '</td>' +
+      '<td>' + d.count + '</td>' +
+      '<td>' + pct + '%</td>' +
+      '<td>' + Object.keys(d.skus).length + '</td>' +
+      '</tr>';
+  }).filter(Boolean).join('');
+  body.innerHTML = rows || '<tr><td colspan="4" class="drilldown-empty">No classified serials</td></tr>';
+}
+
+function dvGlobalSerialsRows() {
+  const rows = [];
+  (ringsData || []).forEach(r => {
+    const sn = String(r.serial_number || '').trim();
+    if (!sn || sn === '--' || sn === 'N/A') return;
+    const cls = classifySerial(sn);
+    rows.push({
+      category: cls ? cls.category : 'UNKNOWN',
+      machine: String(r.file || '--'),
+      slot: String(r.slot == null ? '--' : r.slot),
+      serial: sn,
+      state: dvDrillSlotState(r)
+    });
+  });
+  rows.sort((a, b) => {
+    if (a.category !== b.category) return a.category.localeCompare(b.category);
+    if (a.machine !== b.machine) return a.machine.localeCompare(b.machine, undefined, { numeric: true });
+    const na = parseInt(a.slot, 10), nb = parseInt(b.slot, 10);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return String(a.slot).localeCompare(String(b.slot), undefined, { numeric: true });
+  });
+  return rows;
+}
+
+function renderDvGlobalSerials() {
+  const body = document.getElementById('viz-serials-body');
+  if (!body) return;
+  const rows = dvGlobalSerialsRows();
+  currentAllSerialsExportData = rows;
+  const stateCls = { RUNNING: 'running', PASSED: 'passed', FAILED: 'failed', ASSIGNED: 'assigned', EMPTY: 'empty' };
+  body.innerHTML = rows.length === 0
+    ? '<tr><td colspan="5" class="drilldown-empty">No serials found</td></tr>'
+    : rows.map(r =>
+        '<tr>' +
+        '<td><span class="viz-cat-dot" style="background:' + (dvCategoryColor(r.category) || '#64748B') + ';"></span>' + escapeHtml(r.category) + '</td>' +
+        '<td>' + escapeHtml(r.machine) + '</td>' +
+        '<td>' + escapeHtml(r.slot) + '</td>' +
+        '<td style="font-family:var(--f-mono);font-weight:600;">' + escapeHtml(r.serial) + '</td>' +
+        '<td><span class="viz-status-badge ' + (stateCls[r.state] || 'empty') + '">' + escapeHtml(r.state) + '</span></td>' +
+        '</tr>'
+      ).join('');
+}
+
+function dvRefreshSerialsTab() {
+  const panel = document.getElementById('viz-serials');
+  if (panel && panel.style.display !== 'none') renderDvGlobalSerials();
+}
+
+function dvExportAllSerialsCsv() {
+  if (!currentAllSerialsExportData || currentAllSerialsExportData.length === 0) {
+    dvFlashExportEmpty('btn-export-all-serials');
+    return;
+  }
+  const csvContent = 'Category,Machine,Slot,Serial Number,Status\n' + currentAllSerialsExportData.map(r =>
+    [dvCsvEscape(r.category), dvCsvEscape(r.machine), dvCsvEscape(r.slot), dvCsvEscape(r.serial), dvCsvEscape(r.state)].join(',')
+  ).join('\n');
+  dvTriggerCsvDownload(csvContent, 'Export_GlobalSerials.csv');
+}
+
+(function initVizTabs() {
+  const nav = document.querySelector('.premium-nav-tabs');
+  if (nav) {
+    nav.addEventListener('click', function(e) {
+      const btn = e.target.closest && e.target.closest('.viz-tab-btn');
+      if (!btn || !btn.dataset.target) return;
+      dvSetVizTab(btn.dataset.target);
+    });
+  }
+  const allExportBtn = document.getElementById('btn-export-all-serials');
+  if (allExportBtn) {
+    allExportBtn.addEventListener('click', function() {
+      if (allExportBtn.disabled) return;
+      dvExportAllSerialsCsv();
+    });
+  }
+  const drillContent = document.getElementById('dv-category-content');
+  if (drillContent) {
+    drillContent.addEventListener('click', function(e) {
+      const tabBtn = e.target.closest && e.target.closest('.drill-sub-tab');
+      if (tabBtn && tabBtn.dataset.target) {
+        dvSetDrillTab(tabBtn.dataset.target);
+        return;
+      }
+      const drillExportBtn = e.target.closest && e.target.closest('#btn-export-drill-serials');
+      if (drillExportBtn) {
+        if (drillExportBtn.disabled) return;
+        dvExportDrillSerialsCsv();
+      }
+    });
+  }
+})();
+
+let dvPendingChartArgs = null;
+
 function renderDvCharts(data, skuData) {
+  dvPendingChartArgs = { data: data, skuData: skuData || null };
+
+  const analysisEl = document.getElementById('viz-analysis');
+  if (analysisEl && analysisEl.style.display === 'none') {
+    if (dvBarChart) {
+      try { dvBarChart.destroy(); } catch (e) {}
+      dvBarChart = null;
+    }
+    return;
+  }
+
   const labels = [];
   const values = [];
   const barColors = [];
@@ -1748,6 +2450,39 @@ async function loadSessionFilesFromServer() {
     }
 }
 
+async function loadAssignedTimes() {
+    try {
+        const res = await fetchWithTimeout('/api/rings/assigned-times?ts=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && typeof data === 'object') ringsAssignedTimes = data;
+    } catch (e) {
+        console.warn('Could not load assigned times:', e);
+    }
+}
+
+function captureAssignedTimes() {
+    const changes = [];
+    (ringsData || []).forEach(d => {
+        const sn = (d.serial_number || '').toString().trim();
+        if (!sn || sn === '--' || sn === 'N/A') return;
+        if ((d.state || '').toUpperCase() !== 'ASSIGNED') return;
+        if (!ringsAssignedTimes[d.file]) ringsAssignedTimes[d.file] = {};
+        const e = ringsAssignedTimes[d.file][d.slot];
+        if (!e || e.serial !== sn) {
+            const ts = new Date().toISOString();
+            ringsAssignedTimes[d.file][d.slot] = { serial: sn, ts };
+            changes.push({ machine: d.file, slot: d.slot, serial: sn, ts });
+        }
+    });
+    if (changes.length === 0) return;
+    fetch('/api/rings/assigned-times', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: changes })
+    }).catch(err => console.warn('Could not persist assigned times:', err));
+}
+
 async function loadRingsFromAPI() {
     if (ringsFetchInFlight) return;
     ringsFetchInFlight = true;
@@ -1772,6 +2507,7 @@ async function loadRingsFromAPI() {
                     if (name && v.slots && typeof v.slots === 'object') {
                         machineNames.push(String(name).trim());
                         Object.entries(v.slots).forEach(([slotId, s]) => {
+                            if (String(slotId).startsWith('_')) return;
                             if (s && typeof s === 'object') {
                                 allSlots.push({
                                     slot: slotId,
@@ -1799,7 +2535,9 @@ async function loadRingsFromAPI() {
                 const firstEntry = Object.values(firstVal)[0];
                 if (firstEntry && typeof firstEntry === 'object' && (firstEntry.serial_number || firstEntry.ring_mac || firstEntry.state)) {
                     allSlots = machineNames.flatMap(name =>
-                        Object.entries(payload[name] || {}).map(([slotId, s]) => ({
+                        Object.entries(payload[name] || {})
+                            .filter(([slotId]) => !String(slotId).startsWith('_'))
+                            .map(([slotId, s]) => ({
                             slot: slotId,
                             file: name,
                             serial_number: s.serial_number || '--',
@@ -1836,6 +2574,7 @@ async function loadRingsFromAPI() {
                     const { name, machineData } = r.value;
                     if (machineData && typeof machineData === 'object') {
                         Object.entries(machineData).forEach(([slotId, s]) => {
+                            if (String(slotId).startsWith('_')) return;
                             if (s && typeof s === 'object') {
                                 allSlots.push({
                                     slot: slotId,
@@ -1892,6 +2631,7 @@ async function loadRingsFromAPI() {
 
         ringsData = allSlots;
         ringsFetchCompleted = true;
+        captureAssignedTimes();
         try {
             populateRingsFilter();
             ringsRenderGrid();
@@ -1921,6 +2661,7 @@ function startApiPolling() {
         loadSessionFilesFromServer().catch(err => console.warn('BDR poll error:', err));
     }, API_POLL_MS);
     ringsPollTimer = setInterval(() => {
+        loadRemovedSlotsConfig();
         loadRingsFromAPI().catch(err => console.warn('Rings poll error:', err));
     }, API_POLL_MS);
 }
@@ -1934,6 +2675,7 @@ function stopApiPolling() {
 
 async function startAutoSessionRefresh() {
     loadRemovedSlotsConfig();
+    loadAssignedTimes();
     loadSessionFilesFromServer().catch(err => console.warn('BDR initial fetch error:', err));
     loadRingsFromAPI().catch(err => console.warn('Rings initial fetch error:', err));
     startApiPolling();
@@ -2549,6 +3291,20 @@ document.addEventListener('keydown', (e) => {
 
 let removedSlotsByMachine = {};
 async function loadRemovedSlotsConfig() {
+    try {
+        const res = await fetch('/api/machines/config');
+        if (!res.ok) return;
+        const data = await res.json();
+        const next = {};
+        (data.machines || []).forEach(m => {
+            if (m && m.name && Array.isArray(m.removed_slots) && m.removed_slots.length) {
+                next[normalizeAqcMachineName(m.name)] = new Set(m.removed_slots.map(String));
+            }
+        });
+        removedSlotsByMachine = next;
+    } catch (e) {
+        console.warn('Could not load removed slots config:', e);
+    }
 }
 
 const dtFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -3372,50 +4128,53 @@ function init() {
     document.getElementById('f-slots').innerText = "Total Records: " + validSlotCount;
 
     let hmGrid = document.getElementById('heatmap-grid');
-    hmGrid.innerHTML = '';
+    if (hmGrid) hmGrid.innerHTML = '';
     
     let spotlightSec = document.getElementById('spotlight-section');
     let spotlightGrid = document.getElementById('spotlight-grid');
-    if (spotlightAnomalies.length > 0) {
-        spotlightAnomalies.sort((a,b) => b.priority - a.priority);
-        spotlightSec.style.display = 'flex';
-        document.getElementById('spotlight-insight').innerText = `${spotlightAnomalies.length} anomalies detected across ${validSlotCount} active slots`;
-        
-        let existingToggle = document.getElementById('spotlight-toggle-btn');
-        if (existingToggle) existingToggle.remove();
+    if (spotlightSec && spotlightGrid) {
+        if (spotlightAnomalies.length > 0) {
+            spotlightAnomalies.sort((a,b) => b.priority - a.priority);
+            spotlightSec.style.display = 'flex';
+            const spotlightInsight = document.getElementById('spotlight-insight');
+            if (spotlightInsight) spotlightInsight.innerText = `${spotlightAnomalies.length} anomalies detected across ${validSlotCount} active slots`;
+            
+            let existingToggle = document.getElementById('spotlight-toggle-btn');
+            if (existingToggle) existingToggle.remove();
 
-        let visibleSpotlights = spotlightAnomalies.slice(0, 6);
-        let renderSpotlights = (items) => {
-            spotlightGrid.innerHTML = items.map(a => `
-                <div class="spotlight-card ${a.type}">
-                    <div class="spotlight-slot">Slot ${a.slot_id}</div>
-                    <div class="spotlight-title">${a.title}</div>
-                    <div class="spotlight-msg">${a.message}</div>
-                </div>
-            `).join('');
-        };
-        renderSpotlights(visibleSpotlights);
-
-        if (spotlightAnomalies.length > 6) {
-            let toggleBtn = document.createElement('button');
-            toggleBtn.id = 'spotlight-toggle-btn';
-            toggleBtn.className = 'upload-btn';
-            toggleBtn.style.alignSelf = 'flex-start';
-            toggleBtn.style.marginTop = '4px';
-            toggleBtn.innerText = 'View All ' + spotlightAnomalies.length + ' Anomalies';
-            let isExpanded = false;
-            toggleBtn.onclick = () => {
-                isExpanded = !isExpanded;
-                renderSpotlights(isExpanded ? spotlightAnomalies : visibleSpotlights);
-                toggleBtn.innerText = isExpanded ? 'Show Less' : 'View All ' + spotlightAnomalies.length + ' Anomalies';
+            let visibleSpotlights = spotlightAnomalies.slice(0, 6);
+            let renderSpotlights = (items) => {
+                spotlightGrid.innerHTML = items.map(a => `
+                    <div class="spotlight-card ${a.type}">
+                        <div class="spotlight-slot">Slot ${a.slot_id}</div>
+                        <div class="spotlight-title">${a.title}</div>
+                        <div class="spotlight-msg">${a.message}</div>
+                    </div>
+                `).join('');
             };
-            spotlightSec.appendChild(toggleBtn);
+            renderSpotlights(visibleSpotlights);
+
+            if (spotlightAnomalies.length > 6) {
+                let toggleBtn = document.createElement('button');
+                toggleBtn.id = 'spotlight-toggle-btn';
+                toggleBtn.className = 'upload-btn';
+                toggleBtn.style.alignSelf = 'flex-start';
+                toggleBtn.style.marginTop = '4px';
+                toggleBtn.innerText = 'View All ' + spotlightAnomalies.length + ' Anomalies';
+                let isExpanded = false;
+                toggleBtn.onclick = () => {
+                    isExpanded = !isExpanded;
+                    renderSpotlights(isExpanded ? spotlightAnomalies : visibleSpotlights);
+                    toggleBtn.innerText = isExpanded ? 'Show Less' : 'View All ' + spotlightAnomalies.length + ' Anomalies';
+                };
+                spotlightSec.appendChild(toggleBtn);
+            }
+        } else {
+            spotlightSec.style.display = 'none';
+            spotlightGrid.innerHTML = '';
+            let existingToggle = document.getElementById('spotlight-toggle-btn');
+            if (existingToggle) existingToggle.remove();
         }
-    } else {
-        spotlightSec.style.display = 'none';
-        spotlightGrid.innerHTML = '';
-        let existingToggle = document.getElementById('spotlight-toggle-btn');
-        if (existingToggle) existingToggle.remove();
     }
     
     anomalies.sort((a,b) => b.sevNum - a.sevNum);
@@ -3473,6 +4232,7 @@ function init() {
         let cls = hm.cls;
         const sn = (hm.raw.serial_number || '').toString().trim();
         if (dupSerials.has(sn)) cls += ' slot-dup';
+        const badgeHtml = slotBadgeHtml(sn);
         if (isRefresh && idx < existingCells.length) {
             const el = existingCells[idx];
             el.className = `slot-cell ${cls}`;
@@ -3480,7 +4240,7 @@ function init() {
             el.dataset.cls = hm.cls;
             el.dataset.fw = hm.fw;
             el.dataset.wc = hm.completed.length;
-            el.innerText = hm.id;
+            el.innerHTML = hm.id + badgeHtml;
         } else {
             let el = document.createElement('div');
             el.className = `slot-cell ${cls}`;
@@ -3488,7 +4248,7 @@ function init() {
             el.dataset.cls = hm.cls;
             el.dataset.fw = hm.fw;
             el.dataset.wc = hm.completed.length;
-            el.innerText = hm.id;
+            el.innerHTML = hm.id + badgeHtml;
             hmGrid.appendChild(el);
         }
     });

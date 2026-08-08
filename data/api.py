@@ -523,6 +523,21 @@ def list_machines():
     return CompactJSONResponse(content={"machines": all_machines})
 
 
+@app.get("/api/machines/config")
+def list_machines_config():
+    machines_json_path = Path(__file__).resolve().parent.parent / "machines.json"
+    machines = []
+    if machines_json_path.exists():
+        with machines_json_path.open("r", encoding="utf-8") as f:
+            config = json.load(f)
+            for m in config.get("machines", []):
+                machines.append({
+                    "name": m.get("name", ""),
+                    "removed_slots": m.get("removed_slots", []),
+                })
+    return CompactJSONResponse(content={"machines": machines})
+
+
 @app.get("/api/bdr")
 def get_all_bdr():
     global _bdr_cache, _bdr_cache_ts
@@ -600,6 +615,59 @@ def get_all_rings():
         import traceback
         traceback.print_exc()
         return CompactJSONResponse(content={"error": str(e)}, status_code=500)
+
+
+ASSIGNED_TIMES_LOCK = threading.Lock()
+ASSIGNED_TIMES_PATH = Path(__file__).resolve().parent.parent / "assigned_times.json"
+
+
+def _load_assigned_times():
+    try:
+        if ASSIGNED_TIMES_PATH.exists():
+            with ASSIGNED_TIMES_PATH.open("r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[API] Error loading assigned_times.json: {e}")
+    return {}
+
+
+def _save_assigned_times(data):
+    try:
+        with ASSIGNED_TIMES_PATH.open("w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"[API] Error saving assigned_times.json: {e}")
+
+
+@app.get("/api/rings/assigned-times")
+def get_assigned_times():
+    return CompactJSONResponse(content=_load_assigned_times())
+
+
+@app.post("/api/rings/assigned-times")
+async def set_assigned_times(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    entries = payload.get("entries") or []
+    with ASSIGNED_TIMES_LOCK:
+        data = _load_assigned_times()
+        changed = False
+        for e in entries:
+            machine = e.get("machine")
+            slot = e.get("slot")
+            serial = e.get("serial")
+            ts = e.get("ts")
+            if not machine or slot is None or not serial or not ts:
+                continue
+            cur = data.get(machine, {}).get(str(slot))
+            if not cur or cur.get("serial") != serial:
+                data.setdefault(machine, {})[str(slot)] = {"serial": serial, "ts": ts}
+                changed = True
+        if changed:
+            _save_assigned_times(data)
+    return CompactJSONResponse(content={"ok": True})
 
 
 @app.get("/api/rings/{machine}")
