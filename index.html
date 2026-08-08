@@ -139,9 +139,12 @@
                 <span class="sn-modal-title">Serial Number Browser</span>
                 <div class="sn-cat-filter" id="sn-cat-filter">
                     <button class="active" data-cat="" onclick="setSerialBrowserCategory('')">All</button>
-                    <button data-cat="PRODUCTION" onclick="setSerialBrowserCategory('PRODUCTION')">Production</button>
-                    <button data-cat="RT CONVERSION" onclick="setSerialBrowserCategory('RT CONVERSION')">RT Conv</button>
+                    <button data-cat="PRO" onclick="setSerialBrowserCategory('PRO')">PRO</button>
+                    <button data-cat="AIR" onclick="setSerialBrowserCategory('AIR')">AIR</button>
+                    <button data-cat="DIESEL" onclick="setSerialBrowserCategory('DIESEL')">Diesel</button>
                     <button data-cat="WABI SABI" onclick="setSerialBrowserCategory('WABI SABI')">Wabi Sabi</button>
+                    <button data-cat="RT CONVERSION" onclick="setSerialBrowserCategory('RT CONVERSION')">RT Conversion</button>
+                    <button data-cat="LUX" onclick="setSerialBrowserCategory('LUX')">LUX</button>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:400px;">
                     <button class="sn-bulk-toggle" id="sn-bulk-toggle" onclick="toggleSerialBrowserBulk()" title="Toggle bulk search mode">
@@ -229,15 +232,16 @@
 
             <div class="ops-command-right">
                 <div id="bulk-charger-controls" style="display:flex;gap:6px;align-items:center;"></div>
-                <div class="sn-search-wrapper">
-                    <div class="sn-search-icon">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="11" cy="11" r="8"/>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                        </svg>
+                <div class="bdr-search-box">
+                    <div class="bdr-search-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     </div>
-                    <input type="text" id="serial-search" class="sn-search-input" placeholder="COMMAND PALETTE (Ctrl+K or SEARCH SERIAL)" onclick="toggleCommandPalette()" readonly style="cursor:pointer;"/>
-                    <button class="sn-scan-btn" id="sn-scan-btn" onclick="toggleCommandPalette()">SCAN</button>
+                    <input type="text" id="serial-search" class="bdr-search-input" placeholder="Search serial number..." autocomplete="off" spellcheck="false"/>
+                    <span class="bdr-search-kbd">ENTER</span>
+                    <button class="bdr-search-btn" id="sn-scan-btn">
+                        <span>Search</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                    </button>
                 </div>
                 <button class="btn-5" id="export-serial-btn" style="display:none;" onclick="exportSerialNumbers()" title="Export Serials">
                     <div class="shine"></div>
@@ -422,7 +426,7 @@
                 </div>
             </div>
             <div id="dt-range-info" style="font-size: 11px; color: var(--muted); margin-top: -12px; margin-bottom: 20px; padding: 0 24px; font-style: italic;">
-                Target Ranges — BDR: 5.0-12.0 | Current: 1.0-3.0 mA
+                Target Range — BDR: 5.0-12.0
             </div>
             
             <div style="margin-bottom: 2rem;">
@@ -496,15 +500,7 @@
         </div>
 
         <div class="ops-command-right">
-            <div class="sn-search-wrapper" style="width:240px;">
-                <div class="sn-search-icon">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <circle cx="11" cy="11" r="8"/>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                </div>
-                <input class="filter-input sn-search-input" id="rings-search" type="text" placeholder="SEARCH SERIAL / MAC / RING..." oninput="ringsFilterGrid()">
-            </div>
+            <input class="sn-modal-input" id="rings-search" type="text" placeholder="SEARCH SERIAL / MAC / RING..." autocomplete="off" oninput="ringsFilterGrid()" style="flex:0 1 260px;">
             <button class="export-btn" onclick="ringsExportCSV()" title="Export filtered ring slots data as CSV" style="border-color:var(--border);gap:6px;padding:5px 12px;">
                 <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 <span style="font-size:11px;font-weight:600;">Export CSV</span>
@@ -948,9 +944,14 @@
         </svg>
         <h2 style="margin:0 0 8px;font-weight:700;">Archive Search Console</h2>
         <p style="color:var(--muted);margin:0 0 24px;font-size:13px;max-width:500px;">Search historical BDR snapshots across all archived machine datasets by serial number(s).</p>
-        <div style="display:flex;gap:8px;align-items:center;width:100%;max-width:560px;">
-            <textarea id="od-search-input" class="sn-search-input" placeholder="Enter serial number(s)..." style="flex:1;font-family:var(--f-mono);min-height:56px;height:56px;padding:10px 14px;" oninput="syncOldDataSearchInputs(this)" onkeydown="oldDataHandleKeydown(event)"></textarea>
-            <button class="sn-scan-btn" onclick="searchOldData()" style="padding:16px 24px;font-size:13px;font-weight:700;">SEARCH</button>
+        <div style="display:flex;gap:8px;align-items:center;width:100%;max-width:680px;justify-content:center;">
+            <div class="premium-inline-search" style="flex:1;max-width:520px;">
+                <div class="search-icon-block">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </div>
+                <input type="text" id="od-search-input" class="premium-search-input" placeholder="Enter serial number(s)..." autocomplete="off" oninput="syncOldDataSearchInputs(this)" onkeydown="oldDataHandleKeydown(event)" oncopy="oldDataHandleCopy(event)">
+                <button class="premium-search-btn" onclick="searchOldData()">SEARCH</button>
+            </div>
             <button class="export-btn" onclick="clearOldDataSearch()" style="padding:16px 16px;font-size:13px;font-weight:600;border-color:var(--border);">Clear</button>
         </div>
         <p style="color:var(--muted);font-size:11px;margin:12px 0 0;font-family:var(--f-mono);">Separate multiple serials with commas or Shift+Enter. Partial matching supported.</p>
@@ -959,9 +960,14 @@
     <!-- Search Results View -->
     <div id="od-content" style="display:none;flex-direction:column;gap:16px;">
         <div class="ops-command-bar">
-            <div class="ops-command-left" style="flex:1;">
-                <textarea id="od-search-input-2" class="sn-search-input" placeholder="Enter serial number(s)..." style="font-family:var(--f-mono);width:320px;height:36px;min-height:36px;padding:6px 12px;" oninput="syncOldDataSearchInputs(this)" onkeydown="oldDataHandleKeydown(event)"></textarea>
-                <button class="sn-scan-btn" onclick="searchOldData()" style="padding:8px 16px;font-size:12px;font-weight:700;">SEARCH</button>
+            <div class="ops-command-left" style="flex:1;flex-wrap:nowrap;">
+                <div class="premium-inline-search" style="flex:1;max-width:440px;min-width:240px;">
+                    <div class="search-icon-block">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    </div>
+                    <input type="text" id="od-search-input-2" class="premium-search-input" placeholder="Enter serial number(s)..." autocomplete="off" oninput="syncOldDataSearchInputs(this)" onkeydown="oldDataHandleKeydown(event)" oncopy="oldDataHandleCopy(event)">
+                    <button class="premium-search-btn" onclick="searchOldData()">SEARCH</button>
+                </div>
                 <button class="export-btn" onclick="clearOldDataSearch()" style="padding:8px 14px;font-size:12px;font-weight:600;border-color:var(--border);">Clear</button>
             </div>
             <div class="ops-command-right">

@@ -67,6 +67,7 @@ let isDrilldownActive = false;
 let _serialBrowserFilteredResults = [];
 let _serialBrowserCategoryFilter = '';
 let _serialBrowserBulkMode = false;
+let _serialBrowserBulkSerials = [];
 let ringsData = [];
 let ringsAssignedTimes = {};
 let ringsFetchCompleted = false;
@@ -987,10 +988,13 @@ let dvCurrentSku = null;
 let modalChartInstance = null;
 let dvModalContext = null;
 let currentModalExportData = [];
+let dvSkuDetailChart = null;
+let dvSkuBarChart = null;
 
 const DV_CATEGORIES = [
   { name: 'AIR',           color: '#38BDF8', cardClass: 'air-card' },
   { name: 'PRO',           color: '#6366F1', cardClass: 'pro-card' },
+  { name: 'DIESEL',        color: '#10B981', cardClass: 'diesel-card' },
   { name: 'RT CONVERSION', color: '#F59E0B', cardClass: 'rt-conversion-card' },
   { name: 'WABI SABI',     color: '#8B5CF6', cardClass: 'wabi-sabi-card' },
   { name: 'LUX',           color: '#EAB308', cardClass: 'lux-card' }
@@ -1010,14 +1014,30 @@ function classifySerial(serial) {
   if (['IW1', 'IW2', 'IW3'].includes(catCode)) return { category: 'WABI SABI', sku: modelCode || '--' };
   if (['IR2', 'IR3', 'IR4'].includes(catCode)) return { category: 'RT CONVERSION', sku: modelCode || '--' };
   if (modelCode.startsWith('L')) return { category: 'LUX', sku: modelCode };
+  if (modelCode.charAt(0) === 'D') return { category: 'DIESEL', sku: modelCode };
   if ((parts[0] || '').toUpperCase() === 'RA') return { category: 'AIR', sku: modelCode || '--' };
   if ((parts[0] || '').toUpperCase() === 'RP') return { category: 'PRO', sku: modelCode || '--' };
   return null;
 }
 
+function getSlotProduct(s) {
+  if (!s) return null;
+  if (s.product && String(s.product).trim() !== '' && String(s.product).trim() !== '--') return String(s.product).trim().toUpperCase();
+  if (s.bdr_state && s.bdr_state.product && String(s.bdr_state.product).trim() !== '') return String(s.bdr_state.product).trim().toUpperCase();
+  const cls = classifySerial(String(s.serial_number || '').trim());
+  return cls ? cls.category : null;
+}
+
+function getSlotBdrRange(s) {
+  const product = getSlotProduct(s);
+  if (product === 'PRO') return { product, min: 1.8, max: 3.5 };
+  return { product, min: 5.0, max: 12.0 };
+}
+
 const SLOT_BADGE_DEFS = {
   'PRO':           { key: 'pro',          label: 'PRO' },
   'AIR':           { key: 'air',          label: 'AIR' },
+  'DIESEL':        { key: 'diesel',       label: 'DSL' },
   'LUX':           { key: 'lux',          label: 'LUX' },
   'WABI SABI':     { key: 'wabisabi',     label: 'WS' },
   'RT CONVERSION': { key: 'rtconversion', label: 'RTC' }
@@ -1108,6 +1128,7 @@ function renderDvMainView(data) {
     }
     const content = document.getElementById('dv-category-content');
     if (content) {
+      dvDestroyDrillCharts();
       content.innerHTML = '';
     }
     renderDvSummaryCards(data);
@@ -1148,18 +1169,11 @@ function renderDvCategory(catData, catName, color, allData) {
     }
     const content = document.getElementById('dv-category-content');
     if (content) {
-      content.innerHTML = '';
+      dvDestroyDrillCharts();
+      content.innerHTML = dvSkuVizBlock(catData, color, catName);
     }
 
-    const skuEntries = Object.entries(catData.skus || {}).sort((a, b) => b[1] - a[1]);
-    if (content) {
-      content.innerHTML = '<div class="section-label" style="margin-bottom:8px;">SKU Breakdown</div><div style="display:flex;flex-wrap:wrap;gap:8px;">' +
-        skuEntries.map(([sku, count]) =>
-          '<button class="floorplan-toggle" style="padding:8px 16px;font-size:12px;font-weight:600;" onclick="renderDvSku(\'' + sku.replace(/'/g, "\\'") + '\',' + count + ',\'' + color + '\',\'' + catName.replace(/'/g, "\\'") + '\')">' +
-          sku + ' <span style="background:var(--text2);color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px;">' + count + '</span></button>'
-        ).join('') + '</div>';
-    }
-
+    renderDvSkuBarChart(catData, color, catName);
     renderDvSummaryCards(allData, catName);
     renderDvCharts(allData, catData.skus || {});
   } catch (e) {
@@ -1174,7 +1188,176 @@ function renderDvSku(sku, count, color, catName) {
     '<span style="cursor:pointer;color:' + color + ';" onclick="renderDvCategory(buildDataVizData()[\'' + catName + '\'],\'' + catName + '\',\'' + color + '\',buildDataVizData())">' + catName + '</span> <span style="color:var(--muted);">/</span> ' +
     '<span style="font-weight:600;color:var(--text);">' + sku + '</span>';
   const content = document.getElementById('dv-category-content');
-  content.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">SKU <strong>' + sku + '</strong>: <strong>' + count + '</strong> serials</div>';
+  if (!content) return;
+  const data = buildDataVizData();
+  const rows = dvDrillRows(catName, sku).rows;
+  dvDrillExportRows = rows;
+  const counts = { RUNNING: 0, PASSED: 0, FAILED: 0, ASSIGNED: 0 };
+  rows.forEach(r => { if (counts[r.state] != null) counts[r.state]++; });
+  const machineSet = {};
+  rows.forEach(r => { machineSet[r.machine] = (machineSet[r.machine] || 0) + 1; });
+  const machineCount = Object.keys(machineSet).length;
+
+  const chip = (label, val, chipColor) =>
+    '<div class="dv-drill-chip" style="--drill-chip-accent:' + chipColor + ';">' +
+    '<span class="dv-drill-chip-label">' + label + '</span><span class="dv-drill-chip-value">' + val + '</span></div>';
+  const statusRow = '<div class="dv-drill-status-row">' +
+    chip('Total', rows.length, color) +
+    chip('Running', counts.RUNNING, '#3B82F6') +
+    chip('Passed', counts.PASSED, '#22C55E') +
+    chip('Failed', counts.FAILED, '#EF4444') +
+    chip('Assigned', counts.ASSIGNED, '#F59E0B') +
+    '</div>';
+
+  const serialTable =
+    '<div class="serials-actions" style="justify-content:space-between;margin-bottom:10px;">' +
+      '<div class="section-label" style="margin:0;">Serials &mdash; Machine &amp; Slot</div>' +
+      '<button class="premium-export-btn" type="button" onclick="dvExportDrillSerialsCsv()">' +
+        '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>' +
+        '<span>Export CSV</span>' +
+      '</button>' +
+    '</div>' +
+    '<div class="dv-drill-table-wrap">' +
+      '<table class="ca-table dv-drill-table">' +
+      '<thead><tr><th>Serial</th><th>Machine</th><th>Slot</th><th>Status</th><th>Workouts</th><th>Avg BDR</th><th>Current</th></tr></thead>' +
+      '<tbody>' + dvDrillTableHtml(rows) + '</tbody>' +
+      '</table>' +
+    '</div>';
+
+  content.innerHTML =
+    '<div class="dv-sku-detail">' +
+      '<div class="dv-sku-detail-head">' +
+        '<div>' +
+          '<div class="section-label" style="margin:0;">SKU Detail</div>' +
+          '<div class="dv-sku-detail-sub">' + escapeHtml(String(sku)) + ' &middot; ' + rows.length + ' serials &middot; ' + machineCount + ' machine' + (machineCount === 1 ? '' : 's') + '</div>' +
+        '</div>' +
+      '</div>' +
+      statusRow +
+      '<div class="dv-sku-viz-grid" style="margin-top:14px;align-items:stretch;">' +
+        '<div class="ops-heatmap-card" style="padding:14px;">' +
+          '<div class="ops-section-title" style="margin-bottom:10px;">Serial Distribution by Machine</div>' +
+          '<div id="dv-sku-machine-chart" style="height:250px;"></div>' +
+        '</div>' +
+        '<div class="ops-heatmap-card" style="padding:14px;">' + serialTable + '</div>' +
+      '</div>' +
+    '</div>';
+
+  renderDvSkuMachineChart(rows, color);
+  renderDvSummaryCards(data, catName);
+}
+
+function dvSkuVizBlock(catData, color, catName) {
+  const skuEntries = Object.entries(catData.skus || {}).sort((a, b) => b[1] - a[1]);
+  const total = skuEntries.reduce((s, e) => s + e[1], 0);
+  const chips = skuEntries.map(([sku, cnt]) => {
+    const escSku = String(sku).replace(/'/g, "\\'");
+    const escCat = String(catName).replace(/'/g, "\\'");
+    const go = "renderDvSku('" + escSku + "'," + cnt + ",'" + color + "','" + escCat + "')";
+    return '<button type="button" class="dv-sku-chip" style="--sku-accent:' + color + ';" title="View ' + escapeHtml(String(sku)) + ' details" onclick="' + go + '">' +
+      '<span class="dv-sku-chip-name">' + escapeHtml(String(sku)) + '</span>' +
+      '<span class="dv-sku-chip-count">' + cnt + '</span>' +
+      '</button>';
+  }).join('');
+  return '<div class="dv-sku-viz">' +
+    '<div class="dv-sku-viz-head">' +
+      '<div class="section-label" style="margin:0;">SKU Breakdown</div>' +
+      '<span class="dv-sku-viz-sub">' + total + ' serials &middot; ' + skuEntries.length + ' SKUs</span>' +
+    '</div>' +
+    '<div id="dv-sku-bar" style="height:220px;"></div>' +
+    '<div class="dv-sku-chips">' + chips + '</div>' +
+  '</div>';
+}
+
+function renderDvSkuBarChart(catData, color, catName) {
+  const chartEl = document.getElementById('dv-sku-bar');
+  if (!chartEl) { dvSkuBarChart = null; return; }
+  const entries = Object.entries(catData.skus || {}).sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0) {
+    chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">No SKU data</div>';
+    dvSkuBarChart = null;
+    return;
+  }
+  const labels = entries.map(e => e[0]);
+  const series = entries.map(e => e[1]);
+  const colors = dvModalPalette(color, labels.length);
+  const key = JSON.stringify(series) + '|' + JSON.stringify(labels) + '|' + color;
+  if (dvSkuBarChart && dvSkuBarChart.__dvKey === key) return;
+  const themeMode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  const options = {
+    chart: {
+      type: 'bar',
+      height: 220,
+      toolbar: { show: false },
+      events: {
+        dataPointSelection: function(event, chartContext, config) {
+          const i = config.dataPointIndex;
+          if (i >= 0 && labels[i] != null) renderDvSku(labels[i], series[i], color, catName);
+        }
+      }
+    },
+    series: [{ name: 'Serials', data: series }],
+    xaxis: { categories: labels, labels: { style: { fontSize: '11px' } } },
+    yaxis: { labels: { style: { fontSize: '11px' } } },
+    colors: colors,
+    fill: {
+      type: 'gradient',
+      gradient: { shade: 'dark', type: 'vertical', shadeIntensity: 0.6, inverseColors: false, opacityFrom: 1, opacityTo: 0.5, stops: [0, 90, 100] }
+    },
+    plotOptions: { bar: { borderRadius: 6, borderRadiusApplication: 'end', columnWidth: '45%', distributed: true, dataLabels: { position: 'top' } } },
+    dataLabels: { enabled: true, position: 'top', offsetY: -8, style: { fontSize: '11px', fontWeight: 700, colors: ['#94A3B8'] } },
+    legend: { show: false },
+    grid: getApexGrid(),
+    theme: { mode: themeMode },
+    tooltip: { theme: 'dark', y: { formatter: v => v + (v === 1 ? ' serial' : ' serials') } }
+  };
+  if (dvSkuBarChart) {
+    try { dvSkuBarChart.destroy(); } catch (e) {}
+    dvSkuBarChart = null;
+  }
+  dvSkuBarChart = new ApexCharts(chartEl, options);
+  dvSkuBarChart.__dvKey = key;
+  dvSkuBarChart.render();
+}
+
+function renderDvSkuMachineChart(rows, color) {
+  const el = document.getElementById('dv-sku-machine-chart');
+  if (!el) { dvSkuDetailChart = null; return; }
+  if (dvSkuDetailChart) {
+    try { dvSkuDetailChart.destroy(); } catch (e) {}
+    dvSkuDetailChart = null;
+  }
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">No serials in this SKU</div>';
+    return;
+  }
+  const freq = {};
+  rows.forEach(r => { freq[r.machine] = (freq[r.machine] || 0) + 1; });
+  const entries = Object.entries(freq).sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }));
+  const themeMode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  dvSkuDetailChart = new ApexCharts(el, {
+    chart: { type: 'bar', height: 250, toolbar: { show: false } },
+    series: [{ name: 'Serials', data: entries.map(e => e[1]) }],
+    xaxis: { categories: entries.map(e => e[0]), labels: { style: { fontSize: '11px' } } },
+    plotOptions: { bar: { horizontal: true, borderRadius: 4, distributed: true } },
+    colors: dvModalPalette(color, entries.length),
+    dataLabels: { enabled: true, style: { fontSize: '11px', fontWeight: 700, colors: ['#fff'] } },
+    legend: { show: false },
+    grid: getApexGrid(),
+    theme: { mode: themeMode },
+    tooltip: { theme: 'dark', y: { formatter: v => v + (v === 1 ? ' serial' : ' serials') } }
+  });
+  dvSkuDetailChart.render();
+}
+
+function dvDestroyDrillCharts() {
+  if (dvSkuBarChart) {
+    try { dvSkuBarChart.destroy(); } catch (e) {}
+    dvSkuBarChart = null;
+  }
+  if (dvSkuDetailChart) {
+    try { dvSkuDetailChart.destroy(); } catch (e) {}
+    dvSkuDetailChart = null;
+  }
 }
 
 
@@ -1235,8 +1418,14 @@ function dvDrillSlotState(ringRec) {
   return 'EMPTY';
 }
 
-function dvDrillRows(catName) {
-  const serials = dvDrillCategorySerials(catName);
+function dvDrillRows(catName, sku) {
+  const serials = (sku != null)
+    ? (ringsData || []).filter(r => {
+        const sn = String(r.serial_number || '').trim();
+        const cls = classifySerial(sn);
+        return !!cls && cls.category === catName && cls.sku === sku;
+      })
+    : dvDrillCategorySerials(catName);
   const counts = { TOTAL: serials.length, RUNNING: 0, PASSED: 0, FAILED: 0, ASSIGNED: 0 };
   const rows = serials.map(r => {
     const st = dvDrillSlotState(r);
@@ -1341,7 +1530,12 @@ function renderDvKpiDrilldown(catName, color) {
     const nav = document.getElementById('dv-category-nav');
     if (nav) nav.innerHTML = '';
     const content = document.getElementById('dv-category-content');
-    if (content) content.innerHTML = '';
+    if (content) {
+      dvDestroyDrillCharts();
+      content.innerHTML = '';
+    }
+
+    const skuBlock = dvSkuVizBlock(catData, color, catName);
 
     const { rows, counts } = dvDrillRows(catName);
     const statusColors = { RUNNING: '#3B82F6', PASSED: '#22C55E', FAILED: '#EF4444', ASSIGNED: '#F59E0B' };
@@ -1395,11 +1589,12 @@ function renderDvKpiDrilldown(catName, color) {
       '</div>';
 
     content.innerHTML = drillTabs +
-      '<div id="drill-analytics" class="drill-sub-panel">' + statusRow + cycleSection + '</div>' +
+      '<div id="drill-analytics" class="drill-sub-panel">' + statusRow + cycleSection + skuBlock + '</div>' +
       '<div id="drill-serials" class="drill-sub-panel" style="display:none;">' + serialTable + '</div>';
 
     dvDrillExportRows = rows;
 
+    renderDvSkuBarChart(catData, color, catName);
     renderDvSummaryCards(data, catName);
     renderDvCharts(data);
   } catch (e) {
@@ -1429,7 +1624,9 @@ function dvExportDrillSerialsCsv() {
     [dvCsvEscape(r.serial), dvCsvEscape(r.machine), dvCsvEscape(r.slot), dvCsvEscape(r.state), r.workouts.length,
      r.avgBdr != null ? r.avgBdr.toFixed(2) : '', r.battery != null ? r.battery.toFixed(2) : ''].join(',')
   ).join('\n');
-  dvTriggerCsvDownload(csvContent, 'Export_' + String(dvCurrentCategory || 'Drill').replace(/[^A-Za-z0-9_-]+/g, '_') + '_Serials.csv');
+  const baseName = String(dvCurrentCategory || 'Drill').replace(/[^A-Za-z0-9_-]+/g, '_') +
+    (dvCurrentSku ? '_' + String(dvCurrentSku).replace(/[^A-Za-z0-9_-]+/g, '_') : '');
+  dvTriggerCsvDownload(csvContent, baseName + '_Serials.csv');
 }
 
 function dvStatusUnits(catName, status) {
@@ -1683,6 +1880,25 @@ function dvRefreshKpiDrilldownSoft(catName) {
   content.querySelectorAll('.drill-sub-tab[data-target="drill-serials"]').forEach(b => {
     b.innerHTML = 'Serials (' + rows.length + ')';
   });
+  const catData = buildDataVizData();
+  const fresh = catData && catData[catName];
+  if (fresh) {
+    renderDvSkuBarChart(fresh, color, catName);
+    const chips = content.querySelectorAll('.dv-sku-chip');
+    chips.forEach(chip => {
+      const nameEl = chip.querySelector('.dv-sku-chip-name');
+      if (!nameEl) return;
+      const nm = nameEl.textContent;
+      const cnt = fresh.skus[nm] != null ? fresh.skus[nm] : 0;
+      const cntEl = chip.querySelector('.dv-sku-chip-count');
+      if (cntEl) cntEl.textContent = cnt;
+    });
+    const sub = content.querySelector('.dv-sku-viz-sub');
+    if (sub) {
+      const totals = Object.values(fresh.skus).reduce((s, v) => s + v, 0);
+      sub.textContent = totals + ' serials &middot; ' + Object.keys(fresh.skus).length + ' SKUs';
+    }
+  }
 }
 
 function dvCloseStatusModal() {
@@ -2856,6 +3072,8 @@ function searchSerialNumber(serial) {
 
 // ── Old Data Archive Search ─────────────────────────────────────────
 
+let oldDataBulkSerials = null;
+
 function getOldDataSearchInputs() {
     return [
         document.getElementById('od-search-input'),
@@ -2880,10 +3098,20 @@ function syncOldDataSearchInputs(source) {
 }
 
 function oldDataHandleKeydown(event) {
+    if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) {
+        event.preventDefault();
+        clearOldDataSearch();
+        return;
+    }
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         searchOldData();
     }
+}
+
+function oldDataHandleCopy(event) {
+    event.preventDefault();
+    clearOldDataSearch();
 }
 
 function resetOldDataSearchView() {
@@ -2908,6 +3136,7 @@ function resetOldDataSearchView() {
 }
 
 function clearOldDataSearch() {
+    oldDataBulkSerials = null;
     setOldDataSearchValue('');
     resetOldDataSearchView();
     const input = document.getElementById('od-search-input');
@@ -2938,17 +3167,32 @@ function formatOldDataSerialSummary(serials) {
     return preview + (serials.length > 3 ? ' and <strong>' + (serials.length - 3) + '</strong> more' : '');
 }
 
-async function searchOldData() {
-    const rawSearch = getOldDataSearchValue();
+async function searchOldData(bulkSerials) {
+    let isBulk = Array.isArray(bulkSerials) && bulkSerials.length > 0;
+
+    let rawSearch;
+    if (isBulk) {
+        rawSearch = bulkSerials.join(', ');
+    } else {
+        const inputVal = String(getOldDataSearchValue() || '').trim();
+        if (/^\[Bulk Search: \d+ Serials\]$/.test(inputVal) &&
+            Array.isArray(oldDataBulkSerials) && oldDataBulkSerials.length > 0) {
+            isBulk = true;
+            bulkSerials = oldDataBulkSerials;
+            rawSearch = bulkSerials.join(', ');
+        } else {
+            rawSearch = inputVal;
+        }
+    }
     if (!rawSearch || !rawSearch.trim()) return;
 
-    const serials = parseOldDataSerials(rawSearch);
+    const serials = isBulk ? bulkSerials : parseOldDataSerials(rawSearch);
     if (!serials.length) {
         clearOldDataSearch();
         return;
     }
 
-    setOldDataSearchValue(rawSearch.trim());
+    if (!isBulk) setOldDataSearchValue(rawSearch.trim());
 
     const empty = document.getElementById('od-empty');
     const content = document.getElementById('od-content');
@@ -3000,7 +3244,14 @@ async function searchOldData() {
             }
             if (searchTime) searchTime.textContent = elapsed + 's';
 
-            const rows = data.results || [];
+            let rows = data.results || [];
+            if (isBulk && serials.length > 1) {
+                const bulkLookup = serials.map(s => String(s).trim().toLowerCase());
+                rows = rows.filter(row => {
+                    const rowSerial = String(row && (row.query_serial || row.serial_number || '')).trim().toLowerCase();
+                    return rowSerial && bulkLookup.includes(rowSerial);
+                });
+            }
             const showSerialColumn = Boolean(data.multi_serial || serials.length > 1);
 
             if (rows.length === 0) {
@@ -3112,6 +3363,34 @@ async function searchOldData() {
         if (ld) ld.style.display = 'none';
     }
 }
+
+/* ── Old Data Bulk Paste (Excel column) ───────────────────────────────
+   Single-line inputs strip newlines on paste, so intercept the clipboard
+   natively and split strictly by line breaks (commas ignored). */
+
+function setupOldDataBulkPaste() {
+    const inputs = [
+        document.getElementById('od-search-input'),
+        document.getElementById('od-search-input-2')
+    ].filter(Boolean);
+
+    inputs.forEach(searchInput => {
+        searchInput.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pasteData = (e.clipboardData || window.clipboardData).getData('text');
+            if (!pasteData || !pasteData.trim()) return;
+
+            const serialArray = pasteData.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
+            if (serialArray.length === 0) return;
+
+            oldDataBulkSerials = serialArray;
+            searchInput.value = '[Bulk Search: ' + serialArray.length + ' Serials]';
+            searchOldData(serialArray);
+        });
+    });
+}
+
+setupOldDataBulkPaste();
 
 function exportOldDataCSV() {
     const table = document.querySelector('#od-results table');
@@ -3740,13 +4019,8 @@ function init() {
         }
 
         let sn = s.serial_number || '';
-        let snParts = sn.split('-');
-        let capacity = 24;
-        if (snParts.length >= 4) {
-            if (snParts[3] === 'WB') capacity = 32;
-            else if (snParts[3] === 'W1') capacity = 24;
-        }
-        let avgCurrent = avgSlotBdr > 0 ? (avgSlotBdr / 100) * capacity : 0;
+        const slotRange = getSlotBdrRange(s);
+        const isPro = slotRange.product === 'PRO';
 
         let fails = s.bdr_state?.consecutive_failures || 0;
 
@@ -3783,11 +4057,11 @@ function init() {
             }
         }
 
-        // 3. SLANTING LEAK - only on the tail after the last workout drop
+        // 3. SLANTING LEAK - only on the tail after the last workout drop (disabled for PRO)
         let currentDrop = 0;
         let currentDurMins = 0;
         let isSlantingLeak = false;
-        if (dischargeTail.length >= 2) {
+        if (!isPro && dischargeTail.length >= 2) {
             let startT = new Date(dischargeTail[0][0]);
             let endT = new Date(dischargeTail[dischargeTail.length - 1][0]);
             currentDurMins = Math.round((endT - startT) / 60000);
@@ -3874,7 +4148,7 @@ function init() {
             if (dischargePhase[i][1] > dischargePhase[i-1][1]) unexpectedSpikes++;
         }
         if (unexpectedSpikes > 0 && s.bdr_state?.phase === 'DISCHARGING') {
-            issues.push({ type: 'FAIL', priority: 8, title: `Unexpected Charge`, message: `Unexpected charge during discharge` });
+            issues.push({ type: 'WARNING', priority: 8, title: `Unexpected Charge`, message: `Unexpected charge during discharge` });
         }
 
         // 4. Irregular discharge / thresholds
@@ -3890,7 +4164,7 @@ function init() {
 
         // 5. High failure count
         if (fails >= 10) {
-            issues.push({ type: 'FAIL', priority: 6, title: `${fails} failures`, message: `WAIT_DISCHARGE, stuck at ${s.battery_current || 0}%` });
+            issues.push({ type: 'WARNING', priority: 6, title: `${fails} failures`, message: `WAIT_DISCHARGE, stuck at ${s.battery_current || 0}%` });
         }
 
         // 6. (DEPRECATED) 2.5-Hour Slanting Leak Rule (Moved to top as short-circuit)
@@ -3924,20 +4198,18 @@ function init() {
         let currentVal = dischargeTail.length > 0 ? dischargeTail[dischargeTail.length - 1][1] : 0;
         let peakVal = dischargeTail.length > 0 ? dischargeTail[0][1] : 0;
 
-        if (currentDurMins > 180 && peakVal - currentVal > 5 && distinctSteps < 4) {
+        if (currentDurMins > 180 && peakVal - currentVal > 5 && distinctSteps < 4 && !isPro) {
             issues.push({ type: 'WARNING', priority: 7.5, title: 'Gradual Drop (Slanting Leak)', message: `Missing macro-steps (Only ${distinctSteps} valid steps)` });
         }
 
         let hmClass = 'slot-ok';
         let topIssue = null;
         
-        // 1. DUAL-CONSTRAINT HEALTH LOGIC
-        const BDR_MIN = 5.0, BDR_MAX = 12.0;
-        const CURR_MIN = 1.0, CURR_MAX = 3.0;
+        // 1. BDR HEALTH LOGIC
+        const BDR_MIN = slotRange.min, BDR_MAX = slotRange.max;
 
         let bdrOutOfRange = avgSlotBdr > 0 && (avgSlotBdr < BDR_MIN || avgSlotBdr > BDR_MAX);
         let highAvgBdr = avgSlotBdr > BDR_MAX;
-        let currOutOfRange = avgCurrent > 0 && (avgCurrent < CURR_MIN || avgCurrent > CURR_MAX);
 
         if (highAvgBdr) {
             issues.push({ 
@@ -3952,15 +4224,6 @@ function init() {
                 priority: 5.6, 
                 title: 'BDR Out of Range', 
                 message: `Average BDR (${avgSlotBdr.toFixed(2)}) is outside target range (${BDR_MIN}-${BDR_MAX})` 
-            });
-        }
-
-        if (currOutOfRange) {
-            issues.push({ 
-                type: 'WARNING', 
-                priority: 5.5, 
-                title: 'Current Out of Range', 
-                message: `Average consumption (${avgCurrent.toFixed(2)} mA) is outside target range (${CURR_MIN}-${CURR_MAX})` 
             });
         }
 
@@ -3983,29 +4246,25 @@ function init() {
                     message: 'Battery graph is flat from start to end'
                 };
             } else {
-            // PASS: >= 6 workouts AND avg BDR in 5-12 range
+            // PASS: >= 6 workouts AND avg BDR in category range
             let isPass = !diedHere && !isSlantingLeak && completed.length >= 6 && avgSlotBdr >= BDR_MIN && avgSlotBdr <= BDR_MAX;
             if (isPass) {
                 hmClass = 'slot-pass';
             } else {
             let lowAvgBdr = avgSlotBdr > 0 && avgSlotBdr < BDR_MIN;
             if (lowAvgBdr) hmClass = 'slot-low-bdr';
-            else if (fails >= 3 && fails <= 10) hmClass = 'slot-warn';
-            if (fails > 10) hmClass = 'slot-danger';
+            else if (fails >= 3) hmClass = 'slot-warn';
             if (diedHere) hmClass = 'slot-dead';
 
-            // DUAL-CONSTRAINT OVERRIDE
-            if (bdrOutOfRange && currOutOfRange) {
-                hmClass = 'slot-danger'; // BOTH out of range -> DANGER (Red)
-            } else if (bdrOutOfRange || currOutOfRange) {
-                if (hmClass === 'slot-ok') hmClass = 'slot-warn'; // EITHER out of range -> WARNING (Orange)
+            // BDR OUT-OF-RANGE OVERRIDE
+            if (bdrOutOfRange) {
+                if (hmClass === 'slot-ok') hmClass = 'slot-warn'; // out of range -> WARNING (Orange)
             }
             
             if (issues.length > 0) {
                 issues.sort((a,b) => b.priority - a.priority);
                 topIssue = issues[0];
                 if (topIssue.type === 'CRITICAL') hmClass = 'slot-dead';
-                else if (topIssue.type === 'FAIL') hmClass = 'slot-danger';
                 else if (topIssue.type === 'WARNING' && hmClass !== 'slot-low-bdr') {
                     if (hmClass === 'slot-ok') hmClass = 'slot-warn';
                 }
@@ -4032,21 +4291,19 @@ function init() {
         // Determine warning reason for slot-warn cells
         let warnReason = '';
         if (hmClass === 'slot-warn') {
-            if (fails >= 3 && fails <= 10) {
+            if (fails >= 3) {
                 warnReason = `${fails} consecutive failures`;
             } else if (isSlantingLeak) {
                 warnReason = 'Slanting leak detected';
             } else if (bdrOutOfRange) {
                 warnReason = `BDR ${avgSlotBdr.toFixed(2)} out of range (${BDR_MIN}-${BDR_MAX})`;
-            } else if (currOutOfRange) {
-                warnReason = `Current ${avgCurrent.toFixed(2)}mA out of range (${CURR_MIN}-${CURR_MAX})`;
             } else if (topIssue && topIssue.type === 'WARNING') {
                 warnReason = topIssue.title;
             }
         }
 
         const slotFw = s.firmware_version || 'N/A';
-        heatmapData.push({ id: s.slot_id, cls: hmClass, raw: s, fw: slotFw, latestCycle, dischargePhase, trueActiveDischarge, topIssue, completed, avgSlotBdr, isSlantingLeak, isSensorIssue, avgCurrent, bdrOutOfRange, highAvgBdr, currOutOfRange, fails, warnReason });
+        heatmapData.push({ id: s.slot_id, cls: hmClass, raw: s, fw: slotFw, latestCycle, dischargePhase, trueActiveDischarge, topIssue, completed, avgSlotBdr, isSlantingLeak, isSensorIssue, bdrOutOfRange, highAvgBdr, fails, warnReason });
 
         if (highestBdrPos > 5 || highestBdrNeg < -5 || topIssue) {
             if (topIssue) {
@@ -4451,7 +4708,8 @@ function init() {
         let avgSlotBdr = hm.avgSlotBdr || 0;
         let avgBdrEl = document.getElementById('dt-avg-bdr');
         avgBdrEl.innerText = avgSlotBdr.toFixed(2);
-        if (avgSlotBdr > 0 && (avgSlotBdr < 5.0 || avgSlotBdr > 12.0)) {
+        const sr = getSlotBdrRange(s);
+        if (avgSlotBdr > 0 && (avgSlotBdr < sr.min || avgSlotBdr > sr.max)) {
             avgBdrEl.style.color = '#DC2626';
             avgBdrEl.style.fontWeight = '700';
         } else {
@@ -4474,17 +4732,18 @@ function init() {
 
         let rangeInfoEl = document.getElementById('dt-range-info');
         if (rangeInfoEl) {
-            if (hm.bdrOutOfRange || hm.currOutOfRange) {
-                rangeInfoEl.innerText = "Out of Range (Target BDR: 5-12, Target Current: 1-3)";
+            const sr = getSlotBdrRange(s);
+            if (hm.bdrOutOfRange) {
+                rangeInfoEl.innerText = `Out of Range (Target BDR: ${sr.min}-${sr.max})`;
                 rangeInfoEl.style.color = '#DC2626';
                 rangeInfoEl.style.fontWeight = '600';
             } else {
-                rangeInfoEl.innerText = "Target Ranges — BDR: 5.0-12.0 | Current: 1.0-3.0 mA";
+                rangeInfoEl.innerText = `Target Range - BDR: ${sr.min}-${sr.max}`;
                 rangeInfoEl.style.color = 'var(--muted)';
                 rangeInfoEl.style.fontWeight = '400';
             }
         }
-        
+
         // Calculate Total Cycles and Workouts
         let histForKpi = s.bdr_battery_history || [];
         
@@ -4879,6 +5138,8 @@ function classifyExportSlot(s) {
     let fw = s.firmware_version || "--";
     let history = s.bdr_battery_history || [];
     let isSensorIssue = isFlatBatteryGraph(history);
+    var slotRange = getSlotBdrRange(s);
+    var isPro = slotRange.product === 'PRO';
 
     let completed = calculateCompletedCycleWorkouts(s);
 
@@ -4921,11 +5182,6 @@ function classifyExportSlot(s) {
 
     var avgSlotBdr = getSlotAvgBdr(s, completed);
 
-    var snParts = sn.split('-');
-    var capacity = 24;
-    if (snParts.length >= 4 && snParts[3] === 'WB') capacity = 32;
-    var avgCurrent = avgSlotBdr > 0 ? (avgSlotBdr / 100) * capacity : 0;
-
     var fails = s.bdr_state?.consecutive_failures || 0;
 
     var peakIdx = history.length - 1;
@@ -4943,7 +5199,7 @@ function classifyExportSlot(s) {
     var trueActiveDischarge = history.slice(peakIdx);
 
     var isSlantingLeak = false;
-    if (trueActiveDischarge.length >= 2) {
+    if (!isPro && trueActiveDischarge.length >= 2) {
         var startT = new Date(trueActiveDischarge[0][0]);
         var endT = new Date(trueActiveDischarge[trueActiveDischarge.length - 1][0]);
         var currentDurMins = Math.round((endT - startT) / 60000);
@@ -4984,21 +5240,19 @@ function classifyExportSlot(s) {
             hmClass = 'slot-sensor-issue';
             topIssue = { type: 'WARNING', priority: 16, title: 'Sensor Issue', message: 'Battery graph is flat from start to end' };
         } else {
-            var BDR_MIN = 5.0, BDR_MAX = 12.0, CURR_MIN = 1.0, CURR_MAX = 3.0;
-            // PASS: >= 6 workouts AND avg BDR in 5-12 range
+            var BDR_MIN = slotRange.min, BDR_MAX = slotRange.max;
+            // PASS: >= 6 workouts AND avg BDR in category range
             var isPass = !diedHere && !isSlantingLeak && completed.length >= 6 && avgSlotBdr >= BDR_MIN && avgSlotBdr <= BDR_MAX;
             if (isPass) {
                 hmClass = 'slot-pass';
             } else {
             var lowAvgBdr = avgSlotBdr > 0 && avgSlotBdr < BDR_MIN;
             if (lowAvgBdr) hmClass = 'slot-low-bdr';
-            else if (fails >= 3 && fails <= 10) hmClass = 'slot-warn';
-            if (fails > 10) hmClass = 'slot-danger';
+            else if (fails >= 3) hmClass = 'slot-warn';
             if (diedHere) hmClass = 'slot-dead';
 
             var bdrOutOfRange = avgSlotBdr > 0 && (avgSlotBdr < BDR_MIN || avgSlotBdr > BDR_MAX);
             var highAvgBdr = avgSlotBdr > BDR_MAX;
-            var currOutOfRange = avgCurrent > 0 && (avgCurrent < CURR_MIN || avgCurrent > CURR_MAX);
 
             if (bdrOutOfRange || highAvgBdr) {
                 issues.push({
@@ -5008,13 +5262,8 @@ function classifyExportSlot(s) {
                     message: (highAvgBdr ? 'Avg BDR above ' + BDR_MAX : 'Avg BDR outside ' + BDR_MIN + '-' + BDR_MAX)
                 });
             }
-            if (currOutOfRange) {
-                issues.push({ type: 'WARNING', priority: 5.5, title: 'Current Out of Range', message: 'Avg consumption outside target range' });
-            }
 
-            if (bdrOutOfRange && currOutOfRange) {
-                hmClass = 'slot-danger';
-            } else if (bdrOutOfRange || currOutOfRange) {
+            if (bdrOutOfRange) {
                 if (hmClass === 'slot-ok') hmClass = 'slot-warn';
             }
 
@@ -5031,7 +5280,6 @@ function classifyExportSlot(s) {
                 issues.sort(function (a, b) { return b.priority - a.priority; });
                 topIssue = issues[0];
                 if (topIssue.type === 'CRITICAL') hmClass = 'slot-dead';
-                else if (topIssue.type === 'FAIL') hmClass = 'slot-danger';
                 else if (topIssue.type === 'WARNING' && hmClass === 'slot-ok') hmClass = 'slot-warn';
             }
             }
@@ -5061,7 +5309,6 @@ function classifyExportSlot(s) {
         mac: mac,
         completed: completed,
         avgSlotBdr: avgSlotBdr,
-        avgCurrent: avgCurrent,
         workoutCount: workoutCount,
         status: status,
         topIssue: topIssue,
@@ -5079,7 +5326,7 @@ function exportFleetSummary() {
     var fwActive = window.firmwareFilterActive;
     var hasFwFilter = fwActive && fwActive.size > 0;
 
-    var csv = "Date,Machine,Slot,Serial Number,MAC Address,Firmware Version,Total Workouts,Avg BDR,Average Current (mA),Status\n";
+    var csv = "Date,Machine,Slot,Serial Number,MAC Address,Firmware Version,Total Workouts,Avg BDR,Status\n";
 
     var machines = Object.keys(ALL_MACHINE_DATA).sort();
     machines.forEach(function (machine) {
@@ -5112,13 +5359,12 @@ function exportFleetSummary() {
             if (hasFwFilter && !fwActive.has(r.fw)) return;
 
             var avgBdrStr = r.avgSlotBdr ? r.avgSlotBdr.toFixed(2) : "0.00";
-            var avgCurrentStr = r.avgCurrent ? r.avgCurrent.toFixed(2) : "--";
 
             var history = s.bdr_battery_history || [];
             var startDate = history.length > 0 ? new Date(history[0][0]) : null;
             var dateStr = startDate ? startDate.toISOString().replace('T', ' ').replace(/\..+/, '') : '--';
 
-            var row = [ dateStr, machine, slotId, r.sn, r.mac, r.fw, r.workoutCount, avgBdrStr, avgCurrentStr, r.status ];
+            var row = [ dateStr, machine, slotId, r.sn, r.mac, r.fw, r.workoutCount, avgBdrStr, r.status ];
             var rowData = row.map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; });
             csv += rowData.join(",") + "\n";
         });
@@ -5758,6 +6004,7 @@ function toggleSerialBrowser() {
     } else {
         overlay.classList.add('visible');
         _serialBrowserCategoryFilter = '';
+        _serialBrowserBulkSerials = [];
         document.querySelectorAll('#sn-cat-filter button').forEach(b => b.classList.toggle('active', b.dataset.cat === ''));
         document.getElementById('sn-modal-input').value = '';
         document.getElementById('sn-modal-body').innerHTML = '<div class="sn-empty-state">Start typing a serial number or part of it above</div>';
@@ -5778,7 +6025,7 @@ function toggleSerialBrowserBulk() {
     const btn = document.getElementById('sn-bulk-toggle');
     const input = document.getElementById('sn-modal-input');
     if (btn) btn.classList.toggle('active', _serialBrowserBulkMode);
-    input.placeholder = _serialBrowserBulkMode ? 'Separate multiple serials by comma or newline...' : 'Type any part of serial number...';
+    input.placeholder = _serialBrowserBulkMode ? 'Paste serial numbers (one per line)...' : 'Type any part of serial number...';
     filterSerialBrowser(input.value);
 }
 
@@ -5802,7 +6049,13 @@ function exportSerialBrowserCSV() {
 }
 
 function filterSerialBrowser(query) {
-    const q = query.trim();
+    let q = query.trim();
+    const labelMatch = /^\[Bulk Search: \d+ Serials\]$/.test(q);
+    if (labelMatch && _serialBrowserBulkSerials.length) {
+        q = _serialBrowserBulkSerials.join('\n');
+    } else if (!labelMatch && _serialBrowserBulkSerials.length) {
+        _serialBrowserBulkSerials = [];
+    }
     const body = document.getElementById('sn-modal-body');
     const countEl = document.getElementById('sn-modal-count');
     const data = ringsData || [];
@@ -5816,7 +6069,7 @@ function filterSerialBrowser(query) {
 
     let terms;
     if (_serialBrowserBulkMode) {
-        terms = q.split(/[,;\n\t]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+        terms = q.split(/\r?\n/).map(t => t.trim().toLowerCase()).filter(Boolean);
         if (terms.length === 0) {
             _serialBrowserFilteredResults = [];
             body.innerHTML = '<div class="sn-empty-state">Enter at least one serial number</div>';
@@ -5833,7 +6086,9 @@ function filterSerialBrowser(query) {
         const sn = (r.serial_number || '').toString().trim();
         if (!sn || sn === '--' || sn === 'N/A') return;
         const snLower = sn.toLowerCase();
-        const matched = terms.some(t => snLower.includes(t));
+        const matched = _serialBrowserBulkMode
+            ? terms.includes(snLower)
+            : terms.some(t => snLower.includes(t));
         if (!matched) return;
         const cls = classifySerial(sn);
         if (_serialBrowserCategoryFilter && (!cls || cls.category !== _serialBrowserCategoryFilter)) return;
@@ -5902,7 +6157,9 @@ function filterSerialBrowser(query) {
 
     results.forEach(r => {
         const encodedMachine = encodeURIComponent(r.file);
-        const serialHtml = _serialBrowserBulkMode ? highlightAll(r.serial, terms) : highlight(r.serial, q);
+        const serialHtml = _serialBrowserBulkMode
+            ? (terms.length <= 100 ? highlightAll(r.serial, terms) : escHtml(r.serial))
+            : highlight(r.serial, q);
         html += '<tr onclick="openRingsDetailFromBrowser(\'' + encodedMachine + '\',\'' + r.slot + '\')">' +
             '<td class="sn-serial">' + serialHtml + '</td>' +
             '<td class="sn-machine" style="font-size:11px;">' + escHtml(r.file) + '</td>' +
@@ -5916,6 +6173,32 @@ function filterSerialBrowser(query) {
     html += '</tbody></table>';
     body.innerHTML = html;
 }
+
+/* ── Serial Browser Bulk Paste (Excel column) ─────────────────────────
+   Single-line inputs strip newlines on paste, so intercept the clipboard
+   natively and split strictly by line breaks (commas ignored) — same
+   behavior as the Old Data bulk search. */
+
+function setupSerialBrowserBulkPaste() {
+    const searchInput = document.getElementById('sn-modal-input');
+    if (!searchInput) return;
+
+    searchInput.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const pasteData = (e.clipboardData || window.clipboardData).getData('text');
+        if (!pasteData || !pasteData.trim()) return;
+
+        const serialArray = pasteData.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
+        if (serialArray.length === 0) return;
+
+        if (!_serialBrowserBulkMode) toggleSerialBrowserBulk();
+        _serialBrowserBulkSerials = serialArray;
+        searchInput.value = '[Bulk Search: ' + serialArray.length + ' Serials]';
+        filterSerialBrowser(serialArray.join('\n'));
+    });
+}
+
+setupSerialBrowserBulkPaste();
 
 function openRingsDetailFromBrowser(file, slot) {
     closeSerialBrowser();
@@ -6475,7 +6758,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }, 0);
 
-// Ring slots Enter key search (registered at script level after DOM is ready)
+// Ring slots trigger (registered at script level after DOM is ready)
 document.getElementById('rings-search')?.addEventListener('keydown', function(e) {
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -7825,3 +8108,4 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
+

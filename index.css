@@ -465,7 +465,7 @@
         }
         @keyframes snModalIn { from { opacity:0; transform:scale(0.95) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
         .sn-modal-header {
-            display: flex; align-items: center; gap: 16px;
+            display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
             padding: 14px 18px; border-bottom: 1px solid var(--border);
         }
         .sn-modal-title { font-size: 14px; font-weight: 700; color: var(--text); white-space: nowrap; }
@@ -1820,6 +1820,7 @@
         #dv-summary-cards .wabi-sabi-card { --dv-kpi-accent: #8B5CF6; }
         #dv-summary-cards .air-card { --dv-kpi-accent: #38BDF8; }
         #dv-summary-cards .pro-card { --dv-kpi-accent: #6366F1; }
+        #dv-summary-cards .diesel-card { --dv-kpi-accent: #10B981; }
         #dv-summary-cards .lux-card { --dv-kpi-accent: #EAB308; }
         #dv-summary-cards .kpi-card { cursor: pointer; }
         #dv-summary-cards .kpi-card.active {
@@ -2580,6 +2581,7 @@
         }
         .badge-air { background: #38BDF8; color: #0c4a6e; }
         .badge-pro { background: #6366F1; color: #fff; }
+        .badge-diesel { background: #10B981; color: #022c22; }
         .badge-lux { background: #EAB308; color: #422006; }
         .badge-wabisabi { background: #8B5CF6; color: #fff; }
         .badge-rtconversion { background: #F59E0B; color: #451a03; }
@@ -3508,3 +3510,276 @@
 
 /* Filter Input */
 .filter-input { border: none; background: transparent; outline: none; color: var(--text); font-size: 11px; }
+
+/* =========================================================================
+   PREMIUM INLINE SEARCH BARS (Web3 segmented aesthetic)
+   ========================================================================= */
+
+.premium-inline-search {
+    display: flex;
+    align-items: stretch;
+    background: #131722;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    height: 40px;
+    width: 100%;
+    max-width: 500px;
+    overflow: hidden;
+}
+.premium-inline-search:focus-within {
+    border-color: rgba(34, 211, 238, 0.5);
+    box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.25), 0 0 18px rgba(34, 211, 238, 0.12);
+}
+
+/* Icon block */
+.search-icon-block {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    background: linear-gradient(135deg, #22D3EE, #6366F1);
+    color: white;
+    flex-shrink: 0;
+}
+.search-icon-block svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Input field */
+.premium-search-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    color: #FFFFFF;
+    padding: 0 16px;
+    font-family: var(--f-mono);
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    outline: none;
+    height: 100%;
+}
+.premium-search-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    font-size: 11px;
+}
+
+/* Search button */
+.premium-search-btn {
+    background: linear-gradient(135deg, #22D3EE, #8B5CF6);
+    border: none;
+    color: white;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    padding: 0 20px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: filter 0.2s ease;
+    font-size: 12px;
+    flex-shrink: 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+.premium-search-btn:hover {
+    filter: brightness(1.1);
+}
+.premium-search-btn:active {
+    filter: brightness(0.95);
+}
+
+/* =========================================================================
+   BDR DASHBOARD PREMIUM SEARCH (advanced command-bar search)
+   ========================================================================= */
+
+.bdr-search-box {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: 0 1 360px;
+    min-width: 240px;
+    height: 40px;
+    border-radius: 12px;
+    background: #0B1220;
+    overflow: hidden;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transition: box-shadow 0.25s ease;
+}
+.bdr-search-box::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(34, 211, 238, 0.5), rgba(139, 92, 246, 0.5));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+}
+.bdr-search-box:focus-within {
+    box-shadow: 0 8px 26px rgba(34, 211, 238, 0.14), 0 0 0 3px rgba(34, 211, 238, 0.08);
+}
+.bdr-search-box:focus-within::before {
+    background: linear-gradient(135deg, #22D3EE, #8B5CF6);
+}
+.bdr-search-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 100%;
+    color: #22D3EE;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.35));
+}
+.bdr-search-icon svg {
+    width: 17px;
+    height: 17px;
+}
+.bdr-search-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #E2E8F0;
+    font-family: var(--f-mono);
+    font-size: 13px;
+    letter-spacing: 0.4px;
+    padding: 0 6px;
+}
+.bdr-search-input::placeholder {
+    color: rgba(148, 163, 184, 0.55);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+}
+.bdr-search-kbd {
+    flex-shrink: 0;
+    margin-right: 8px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    color: #94A3B8;
+    font-family: var(--f-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    background: rgba(148, 163, 184, 0.06);
+}
+.bdr-search-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    padding: 0 18px 0 16px;
+    border: none;
+    background: linear-gradient(135deg, #22D3EE 0%, #6366F1 55%, #8B5CF6 100%);
+    color: #fff;
+    font-family: var(--f-sans);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: filter 0.2s ease, transform 0.2s ease;
+}
+.bdr-search-btn svg {
+    width: 14px;
+    height: 14px;
+}
+.bdr-search-btn:hover {
+    filter: brightness(1.12);
+    transform: translateX(1px);
+}
+.bdr-search-btn:active {
+    filter: brightness(0.95);
+    transform: translateX(0);
+}
+
+        /* SKU Breakdown visualization — vertical bar chart + chips (Data Viz first drilldown) */
+        .dv-sku-viz {
+            margin-top: 16px;
+            padding: 12px;
+            border: 1px solid var(--viz-glass-border);
+            border-radius: 10px;
+            background: var(--viz-glass-bg);
+            box-shadow: var(--viz-glass-shadow);
+        }
+        .dv-sku-viz-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .dv-sku-viz-sub {
+            font-size: 12px;
+            color: var(--muted);
+        }
+        #dv-sku-bar {
+            margin: 0 -12px;
+            padding: 0 12px;
+        }
+        .dv-sku-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .dv-sku-chip {
+            appearance: none;
+            border: 1px solid color-mix(in srgb, var(--sku-accent) 40%, rgba(148,163,184,0.25));
+            background: color-mix(in srgb, var(--sku-accent) 10%, rgba(148,163,184,0.05));
+            color: var(--text);
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 5px 10px;
+            border-radius: 999px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+        }
+        .dv-sku-chip:hover,
+        .dv-sku-chip:focus-visible {
+            outline: none;
+            border-color: var(--sku-accent);
+            transform: translateY(-1px);
+            box-shadow: 0 0 12px color-mix(in srgb, var(--sku-accent) 35%, transparent);
+        }
+        .dv-sku-chip-name {
+            font-family: var(--f-mono);
+        }
+        .dv-sku-chip-count {
+            background: var(--sku-accent);
+            color: #fff;
+            border-radius: 999px;
+            padding: 1px 7px;
+            font-size: 10px;
+        }
+            transition: width 0.4s ease;
+        }
+
+        /* SKU detail drilldown */
+        .dv-sku-detail-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+        .dv-sku-detail-sub {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
