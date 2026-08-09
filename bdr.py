@@ -271,6 +271,14 @@ def _write_pids(pids):
 
 # ─── Old Data ────────────────────────────────────────────────────────────────────
 
+def _clear_console():
+    """Clear the terminal screen."""
+    if os.name == "nt":
+        os.system("cls")
+    else:
+        print("\033[2J\033[H", end="", flush=True)
+
+
 def cmd_old_data(serial):
     print()
     print(f"  {'='*50}")
@@ -805,7 +813,13 @@ def main():
     if args.command == "old-data":
         if not args.serial:
             parser.error("old-data requires a serial number argument")
-        return cmd_old_data(args.serial)
+        try:
+            return cmd_old_data(args.serial)
+        except KeyboardInterrupt:
+            _clear_console()
+            print(f"  {_c(C.YLW, 'Search cancelled — screen cleared.')}")
+            print()
+            return 130
 
     commands = {
         "start": cmd_start,

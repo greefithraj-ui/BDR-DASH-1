@@ -3098,7 +3098,7 @@ function syncOldDataSearchInputs(source) {
 }
 
 function oldDataHandleKeydown(event) {
-    if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) {
+    if (event.ctrlKey && (event.key === 'z' || event.key === 'Z')) {
         event.preventDefault();
         clearOldDataSearch();
         return;
@@ -3107,11 +3107,6 @@ function oldDataHandleKeydown(event) {
         event.preventDefault();
         searchOldData();
     }
-}
-
-function oldDataHandleCopy(event) {
-    event.preventDefault();
-    clearOldDataSearch();
 }
 
 function resetOldDataSearchView() {
@@ -6601,6 +6596,17 @@ function setupViewToggleListeners() {
             if (input2) input2.value = input1 ? input1.value : '';
         });
     }
+
+    // Ctrl+Z clears the Old Data search even when focus is NOT on the search bar
+    document.addEventListener('keydown', (event) => {
+        if (!event.ctrlKey || (event.key !== 'z' && event.key !== 'Z')) return;
+        const oldDataView = document.getElementById('old-data-view');
+        if (!oldDataView || oldDataView.style.display === 'none') return;
+        const target = event.target;
+        if (target && target.id && (target.id === 'od-search-input' || target.id === 'od-search-input-2')) return;
+        event.preventDefault();
+        clearOldDataSearch();
+    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
