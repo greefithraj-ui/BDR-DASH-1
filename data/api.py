@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -619,6 +620,7 @@ def get_all_rings():
 
 ASSIGNED_TIMES_LOCK = threading.Lock()
 ASSIGNED_TIMES_PATH = Path(__file__).resolve().parent.parent / "assigned_times.json"
+ASSIGNED_HISTORY_PATH = Path(__file__).resolve().parent.parent / "assigned_history.json"
 
 
 def _load_assigned_times():
@@ -639,9 +641,32 @@ def _save_assigned_times(data):
         print(f"[API] Error saving assigned_times.json: {e}")
 
 
+def _load_assigned_history():
+    try:
+        if ASSIGNED_HISTORY_PATH.exists():
+            with ASSIGNED_HISTORY_PATH.open("r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[API] Error loading assigned_history.json: {e}")
+    return []
+
+
+def _save_assigned_history(data):
+    try:
+        with ASSIGNED_HISTORY_PATH.open("w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"[API] Error saving assigned_history.json: {e}")
+
+
 @app.get("/api/rings/assigned-times")
 def get_assigned_times():
     return CompactJSONResponse(content=_load_assigned_times())
+
+
+@app.get("/api/rings/assigned-history")
+def get_assigned_history():
+    return CompactJSONResponse(content={"events": _load_assigned_history()})
 
 
 @app.post("/api/rings/assigned-times")
@@ -653,6 +678,7 @@ async def set_assigned_times(request: Request):
     entries = payload.get("entries") or []
     with ASSIGNED_TIMES_LOCK:
         data = _load_assigned_times()
+        history = _load_assigned_history()
         changed = False
         for e in entries:
             machine = e.get("machine")
@@ -664,9 +690,94 @@ async def set_assigned_times(request: Request):
             cur = data.get(machine, {}).get(str(slot))
             if not cur or cur.get("serial") != serial:
                 data.setdefault(machine, {})[str(slot)] = {"serial": serial, "ts": ts}
+                history.append({"machine": machine, "slot": slot, "serial": serial, "ts": ts})
                 changed = True
         if changed:
             _save_assigned_times(data)
+            _save_assigned_history(history)
+    return CompactJSONResponse(content={"ok": True})
+
+
+STATUS_TIMES_LOCK = threading.Lock()
+STATUS_TIMES_PATH = Path(__file__).resolve().parent.parent / "status_times.json"
+STATUS_HISTORY_PATH = Path(__file__).resolve().parent.parent / "status_history.json"
+
+
+def _load_status_times():
+    try:
+        if STATUS_TIMES_PATH.exists():
+            with STATUS_TIMES_PATH.open("r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[API] Error loading status_times.json: {e}")
+    return {}
+
+
+def _save_status_times(data):
+    try:
+        with STATUS_TIMES_PATH.open("w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"[API] Error saving status_times.json: {e}")
+
+
+def _load_status_history():
+    try:
+        if STATUS_HISTORY_PATH.exists():
+            with STATUS_HISTORY_PATH.open("r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[API] Error loading status_history.json: {e}")
+    return []
+
+
+def _save_status_history(data):
+    try:
+        with STATUS_HISTORY_PATH.open("w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"[API] Error saving status_history.json: {e}")
+
+
+@app.get("/api/rings/status-times")
+def get_status_times():
+    return CompactJSONResponse(content=_load_status_times())
+
+
+@app.get("/api/rings/status-history")
+def get_status_history():
+    return CompactJSONResponse(content={"events": _load_status_history()})
+
+
+@app.post("/api/rings/status-times")
+async def set_status_times(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    entries = payload.get("entries") or []
+    with STATUS_TIMES_LOCK:
+        data = _load_status_times()
+        history = _load_status_history()
+        changed = False
+        for e in entries:
+            machine = e.get("machine")
+            slot = e.get("slot")
+            serial = e.get("serial")
+            status = str(e.get("status") or "").upper()
+            ts = e.get("ts")
+            if not machine or slot is None or not serial or not ts:
+                continue
+            if status not in ("PASSED", "FAILED"):
+                continue
+            cur = data.get(machine, {}).get(str(slot))
+            if not cur or cur.get("serial") != serial or cur.get("status") != status:
+                data.setdefault(machine, {})[str(slot)] = {"serial": serial, "status": status, "ts": ts}
+                history.append({"machine": machine, "slot": slot, "serial": serial, "status": status, "ts": ts})
+                changed = True
+        if changed:
+            _save_status_times(data)
+            _save_status_history(history)
     return CompactJSONResponse(content={"ok": True})
 
 
@@ -689,6 +800,240 @@ def get_rings_machine(machine: str):
         import traceback
         traceback.print_exc()
         return CompactJSONResponse(content={"error": str(e)}, status_code=500)
+
+
+# ── RTO Category — Google Sheet Configuration ─────────────────────
+
+RTO_CONFIG_LOCK = threading.Lock()
+RTO_CONFIG_PATH = Path(__file__).resolve().parent.parent / "rto_config.json"
+
+
+def _load_rto_config():
+    default = {
+        "ok": False,
+        "url": "",
+        "sheet": "",
+        "column": "",
+        "serials": [],
+        "count": 0,
+        "updated_at": None,
+    }
+    try:
+        if RTO_CONFIG_PATH.exists():
+            with RTO_CONFIG_PATH.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                default.update(data)
+    except Exception as e:
+        print(f"[api] Error loading rto_config.json: {e}")
+    return default
+
+
+def _save_rto_config(data):
+    try:
+        with RTO_CONFIG_PATH.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"[api] Error saving rto_config.json: {e}")
+
+
+def _fetch_url_bytes(url, timeout=30):
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BDR-Dashboard/1.0",
+            "Accept": "*/*",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
+def _find_sheet_column_index(headers, column_name):
+    """Locate a column by header label (case-insensitive) or A1 letter."""
+    target = str(column_name or "").strip()
+    if not target:
+        return None
+    lower = target.lower()
+    clean = lower.strip('"').strip("'")
+    for i, h in enumerate(headers):
+        hv = str(h or "").strip().strip('"').strip("'").lower()
+        if hv == lower or hv == clean:
+            return i
+    if len(clean) == 1 and clean.isalpha():
+        idx = ord(clean.upper()) - ord("A")
+        if 0 <= idx < 26:
+            return idx
+    return None
+
+
+def _collect_column_serials(rows, idx):
+    serials = []
+    seen = set()
+    for row in rows:
+        if idx >= len(row):
+            continue
+        cell = row[idx]
+        if cell is None:
+            continue
+        if isinstance(cell, dict):
+            cell = cell.get("v")
+        if cell is None:
+            continue
+        sv = str(cell).strip()
+        if not sv:
+            continue
+        key = sv.upper()
+        if key in seen:
+            continue
+        seen.add(key)
+        serials.append(sv)
+    return serials
+
+
+def _fetch_serials_gviz(token, sheet_name, column_name):
+    """Fetch a public sheet via the Google Visualization JSONP endpoint."""
+    params = {"tqx": "out:json"}
+    if sheet_name:
+        params["sheet"] = sheet_name
+    url = "https://docs.google.com/spreadsheets/d/%s/gviz/tq?%s" % (
+        token,
+        urllib.parse.urlencode(params),
+    )
+    text = _fetch_url_bytes(url).decode("utf-8", errors="replace")
+    start = text.find("(")
+    end = text.rfind(")")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("Unexpected response from Google Sheets (gviz)")
+    payload = json.loads(text[start + 1 : end])
+    if payload.get("status") != "ok":
+        raise ValueError("Google Sheets returned status: %s" % payload.get("status", "unknown"))
+    table = payload.get("table", {}) or {}
+    headers = [c.get("label") or c.get("type") for c in table.get("cols", [])]
+    idx = _find_sheet_column_index(headers, column_name)
+    if idx is None:
+        raise ValueError(
+            "Column '%s' not found. Available columns: %s"
+            % (column_name, ", ".join(str(h) for h in headers[:20]) or "(none)")
+        )
+    rows = [r.get("c") or [] for r in table.get("rows", [])]
+    return _collect_column_serials(rows, idx)
+
+
+def _fetch_serials_csv(token, sheet_name, column_name, published=False):
+    """Fetch a public sheet as CSV (used as fallback / for published sheets)."""
+    import csv as _csv
+    import io as _io
+
+    if published:
+        url = "https://docs.google.com/spreadsheets/d/e/%s/pub?output=csv" % token
+    else:
+        params = {"tqx": "out:csv"}
+        if sheet_name:
+            params["sheet"] = sheet_name
+        url = "https://docs.google.com/spreadsheets/d/%s/gviz/tq?%s" % (
+            token,
+            urllib.parse.urlencode(params),
+        )
+    text = _fetch_url_bytes(url).decode("utf-8", errors="replace")
+    reader = _csv.reader(_io.StringIO(text))
+    all_rows = [row for row in reader if any((c or "").strip() for c in row)]
+    if not all_rows:
+        raise ValueError("The Google Sheet returned no data")
+    headers = all_rows[0]
+    idx = _find_sheet_column_index(headers, column_name)
+    if idx is None:
+        raise ValueError(
+            "Column '%s' not found. Available columns: %s"
+            % (column_name, ", ".join(str(h) for h in headers[:20]) or "(none)")
+        )
+    return _collect_column_serials(all_rows[1:], idx)
+
+
+def _fetch_serials_for_config(url, sheet_name, column_name):
+    match = re.search(r"/d/(?:e/)?([A-Za-z0-9_\-]+)", url or "")
+    if not match:
+        raise ValueError(
+            "Could not find a Google Sheet ID in the URL. Use the standard share link like "
+            "https://docs.google.com/spreadsheets/d/<ID>/edit"
+        )
+    token = match.group(1)
+    published = bool(re.search(r"/d/e/", url or ""))
+
+    if published:
+        return _fetch_serials_csv(token, sheet_name, column_name, published=True)
+
+    errors = []
+    try:
+        return _fetch_serials_gviz(token, sheet_name, column_name)
+    except Exception as e:
+        errors.append(str(e))
+    try:
+        return _fetch_serials_csv(token, sheet_name, column_name)
+    except Exception as e:
+        errors.append(str(e))
+    raise ValueError("; ".join(errors) or "Failed to fetch the Google Sheet")
+
+
+@app.get("/api/settings/rto")
+def get_rto_settings():
+    with RTO_CONFIG_LOCK:
+        cfg = _load_rto_config()
+    return CompactJSONResponse(content=cfg)
+
+
+@app.post("/api/settings/rto")
+async def set_rto_settings(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    if payload.get("clear"):
+        cfg = {
+            "ok": False,
+            "url": "",
+            "sheet": "",
+            "column": "",
+            "serials": [],
+            "count": 0,
+            "updated_at": None,
+        }
+        with RTO_CONFIG_LOCK:
+            _save_rto_config(cfg)
+        return CompactJSONResponse(content={**cfg, "cleared": True})
+
+    url = str(payload.get("url") or "").strip()
+    sheet = str(payload.get("sheet") or "").strip()
+    column = str(payload.get("column") or "").strip()
+    if not url or not column:
+        return CompactJSONResponse(
+            content={"ok": False, "error": "Google Sheet URL and Column Name are required."},
+            status_code=400,
+        )
+
+    try:
+        serials = _fetch_serials_for_config(url, sheet, column)
+    except ValueError as e:
+        return CompactJSONResponse(content={"ok": False, "error": str(e)}, status_code=400)
+    except Exception as e:
+        return CompactJSONResponse(
+            content={"ok": False, "error": "Failed to fetch Google Sheet: %s" % e},
+            status_code=502,
+        )
+
+    cfg = {
+        "ok": True,
+        "url": url,
+        "sheet": sheet,
+        "column": column,
+        "serials": serials,
+        "count": len(serials),
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    with RTO_CONFIG_LOCK:
+        _save_rto_config(cfg)
+    return CompactJSONResponse(content=cfg)
 
 
 # ── Diagnostic Endpoints ──────────────────────────────────────────

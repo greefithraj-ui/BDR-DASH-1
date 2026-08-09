@@ -70,6 +70,9 @@ let _serialBrowserBulkMode = false;
 let _serialBrowserBulkSerials = [];
 let ringsData = [];
 let ringsAssignedTimes = {};
+let ringsAssignedHistory = [];
+let ringsStatusTimes = {};
+let ringsStatusHistory = [];
 let ringsFetchCompleted = false;
 let ringsDirHandle = null;
 let ringsFileHashes = new Map();
@@ -997,7 +1000,8 @@ const DV_CATEGORIES = [
   { name: 'DIESEL',        color: '#10B981', cardClass: 'diesel-card' },
   { name: 'RT CONVERSION', color: '#F59E0B', cardClass: 'rt-conversion-card' },
   { name: 'WABI SABI',     color: '#8B5CF6', cardClass: 'wabi-sabi-card' },
-  { name: 'LUX',           color: '#EAB308', cardClass: 'lux-card' }
+  { name: 'LUX',           color: '#EAB308', cardClass: 'lux-card' },
+  { name: 'RTO',           color: '#EC4899', cardClass: 'rto-card' }
 ];
 
 function dvCategoryColor(catName) {
@@ -1005,11 +1009,16 @@ function dvCategoryColor(catName) {
   return def ? def.color : '#94A3B8';
 }
 
+let RTO_SERIAL_SET = new Set();
+let RTO_CONFIG = { ok: false, url: '', sheet: '', column: '', serials: [], count: 0, updated_at: null };
+
 function classifySerial(serial) {
   if (!serial || serial === '--' || serial === 'N/A') return null;
+  const upperSn = String(serial).trim().toUpperCase();
   const parts = serial.split('-');
   const catCode = (parts[2] || '').toUpperCase();
   const modelCode = (parts[4] || '').toUpperCase();
+  if (RTO_SERIAL_SET.has(upperSn)) return { category: 'RTO', sku: modelCode || '--' };
 
   if (['IW1', 'IW2', 'IW3'].includes(catCode)) return { category: 'WABI SABI', sku: modelCode || '--' };
   if (['IR2', 'IR3', 'IR4'].includes(catCode)) return { category: 'RT CONVERSION', sku: modelCode || '--' };
@@ -1040,7 +1049,8 @@ const SLOT_BADGE_DEFS = {
   'DIESEL':        { key: 'diesel',       label: 'DSL' },
   'LUX':           { key: 'lux',          label: 'LUX' },
   'WABI SABI':     { key: 'wabisabi',     label: 'WS' },
-  'RT CONVERSION': { key: 'rtconversion', label: 'RTC' }
+  'RT CONVERSION': { key: 'rtconversion', label: 'RTC' },
+  'RTO':           { key: 'rto',          label: 'RTO' }
 };
 
 function slotBadgeHtml(serial) {
@@ -1358,6 +1368,14 @@ function dvDestroyDrillCharts() {
     try { dvSkuDetailChart.destroy(); } catch (e) {}
     dvSkuDetailChart = null;
   }
+  if (rlChartInstance) {
+    try { rlChartInstance.destroy(); } catch (e) {}
+    rlChartInstance = null;
+  }
+  if (dsChartInstance) {
+    try { dsChartInstance.destroy(); } catch (e) {}
+    dsChartInstance = null;
+  }
 }
 
 
@@ -1586,11 +1604,15 @@ function renderDvKpiDrilldown(catName, color) {
       '<div class="drill-sub-tabs" role="tablist">' +
         '<button type="button" class="drill-sub-tab active" role="tab" aria-selected="true" data-target="drill-analytics">Analytics</button>' +
         '<button type="button" class="drill-sub-tab" role="tab" aria-selected="false" data-target="drill-serials">Serials (' + rows.length + ')</button>' +
+        '<button type="button" class="drill-sub-tab" role="tab" aria-selected="false" data-target="drill-rings-loaded">Rings Loaded Daily</button>' +
+        '<button type="button" class="drill-sub-tab" role="tab" aria-selected="false" data-target="drill-status-daily">Daily Status</button>' +
       '</div>';
 
     content.innerHTML = drillTabs +
       '<div id="drill-analytics" class="drill-sub-panel">' + statusRow + cycleSection + skuBlock + '</div>' +
-      '<div id="drill-serials" class="drill-sub-panel" style="display:none;">' + serialTable + '</div>';
+      '<div id="drill-serials" class="drill-sub-panel" style="display:none;">' + serialTable + '</div>' +
+      '<div id="drill-rings-loaded" class="drill-sub-panel" style="display:none;">' + dvRingsLoadedBlockHtml() + '</div>' +
+      '<div id="drill-status-daily" class="drill-sub-panel" style="display:none;">' + dvStatusDailyBlockHtml() + '</div>';
 
     dvDrillExportRows = rows;
 
@@ -1613,6 +1635,8 @@ function dvSetDrillTab(target) {
   content.querySelectorAll('.drill-sub-panel').forEach(p => {
     p.style.display = p.id === target ? 'block' : 'none';
   });
+  if (target === 'drill-rings-loaded') dvRenderRingsLoadedTab();
+  if (target === 'drill-status-daily') dvRenderStatusDailyTab();
 }
 
 function dvExportDrillSerialsCsv() {
@@ -1899,6 +1923,10 @@ function dvRefreshKpiDrilldownSoft(catName) {
       sub.textContent = totals + ' serials &middot; ' + Object.keys(fresh.skus).length + ' SKUs';
     }
   }
+  const rlPanel = content.querySelector('#drill-rings-loaded');
+  if (rlPanel && rlPanel.style.display === 'block') dvRenderRingsLoadedTab();
+  const dsPanel = content.querySelector('#drill-status-daily');
+  if (dsPanel && dsPanel.style.display === 'block') dvRenderStatusDailyTab();
 }
 
 function dvCloseStatusModal() {
@@ -1977,6 +2005,437 @@ function dvRenderAnalyticsSummary(rows) {
   const tbody = document.getElementById('analytics-summary-body');
   if (!tbody) return;
   tbody.innerHTML = dvAnalyticsSummaryHtml(rows);
+}
+
+/* ── Rings Loaded Daily (assigned-timestamp based) ─────────────── */
+
+let rlChartInstance = null;
+let rlFilter = { from: null, to: null };
+
+function dvRingsLoadedEvents() {
+  const catName = dvCurrentCategory;
+  const map = {};
+  const put = (machine, slot, serial, ts) => {
+    if (catName) {
+      const cls = classifySerial(String(serial || '').trim());
+      if (!cls || cls.category !== catName) return;
+    }
+    const t = new Date(ts);
+    if (isNaN(t.getTime())) return;
+    map[String(machine) + '|' + String(slot) + '|' + String(serial)] = t;
+  };
+  Object.entries(ringsAssignedTimes || {}).forEach(([machine, slots]) => {
+    Object.entries(slots || {}).forEach(([slot, e]) => {
+      if (e && e.serial && e.ts) put(machine, slot, e.serial, e.ts);
+    });
+  });
+  (ringsAssignedHistory || []).forEach(ev => {
+    if (ev && ev.machine != null && ev.slot != null && ev.serial && ev.ts) put(ev.machine, ev.slot, ev.serial, ev.ts);
+  });
+  return Object.entries(map).map(([k, t]) => {
+    const p = k.split('|');
+    return { machine: p[0], slot: p[1], serial: p[2], ts: t };
+  });
+}
+
+function dvRingsLoadedDaily(events) {
+  const perDay = new Map();
+  events.forEach(ev => {
+    const t = ev.ts;
+    const y = t.getFullYear();
+    const m = String(t.getMonth() + 1).padStart(2, '0');
+    const d = String(t.getDate()).padStart(2, '0');
+    const date = y + '-' + m + '-' + d;
+    if (!perDay.has(date)) perDay.set(date, new Map());
+    const machines = perDay.get(date);
+    machines.set(ev.machine, (machines.get(ev.machine) || 0) + 1);
+  });
+  return Array.from(perDay.entries())
+    .map(([date, machines]) => ({
+      date: date,
+      total: Array.from(machines.values()).reduce((s, c) => s + c, 0),
+      machines: Array.from(machines.entries()).sort((a, b) => b[1] - a[1])
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function dvRenderRingsLoadedChart(daily) {
+  const el = document.getElementById('rl-chart');
+  if (!el) return;
+  if (rlChartInstance) {
+    try { rlChartInstance.destroy(); } catch (e) {}
+    rlChartInstance = null;
+  }
+  el.innerHTML = '';
+  if (!daily.length) {
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">No rings loaded in the selected range</div>';
+    return;
+  }
+  const themeMode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  rlChartInstance = new ApexCharts(el, {
+    chart: {
+      type: 'bar',
+      height: 250,
+      toolbar: { show: false },
+      zoom: { enabled: false }
+    },
+    series: [{ name: 'Rings Loaded', data: daily.map(d => d.total) }],
+    xaxis: { categories: daily.map(d => d.date), labels: { style: { fontSize: '11px' }, rotate: -45 } },
+    colors: ['#0D9488'],
+    fill: {
+      type: 'gradient',
+      gradient: { shade: 'dark', type: 'vertical', shadeIntensity: 0.5, inverseColors: false, opacityFrom: 1, opacityTo: 0.8, stops: [0, 100] }
+    },
+    plotOptions: { bar: { borderRadius: 4, columnWidth: '45%' } },
+    dataLabels: { enabled: true, position: 'top', offsetY: -6, style: { fontSize: '11px', fontWeight: 700, colors: ['#94A3B8'] } },
+    legend: { show: false },
+    grid: getApexGrid(),
+    theme: { mode: themeMode },
+    tooltip: { theme: 'dark', y: { formatter: v => v + ' ring' + (v === 1 ? '' : 's') } }
+  });
+  rlChartInstance.render();
+}
+
+function dvRenderRingsLoadedTable(daily) {
+  const tbody = document.getElementById('rl-table-body');
+  if (!tbody) return;
+  if (!daily.length) {
+    tbody.innerHTML = '<tr><td class="drilldown-empty" colspan="3">No rings loaded in the selected range</td></tr>';
+    return;
+  }
+  let html = '';
+  let grandTotal = 0;
+  daily.forEach(d => {
+    d.machines.forEach(([m, c]) => {
+      html += '<tr><td style="font-family:var(--f-mono);font-weight:600;">' + d.date + '</td>' +
+        '<td style="font-family:var(--f-mono);">' + escapeHtml(m) + '</td><td>' + c + '</td></tr>';
+      grandTotal += c;
+    });
+  });
+  html += '<tr style="border-top:2px solid var(--border);background:rgba(96,165,250,0.06);">' +
+    '<td class="drilldown-empty" colspan="2" style="font-weight:800;text-align:right;">Total rings loaded</td>' +
+    '<td style="font-weight:800;">' + grandTotal + '</td></tr>';
+  tbody.innerHTML = html;
+}
+
+async function dvRenderRingsLoadedTab() {
+  try {
+    await loadAssignedHistory();
+  } catch (e) {}
+  const events = dvRingsLoadedEvents();
+  let filtered = events;
+  if (rlFilter.from) filtered = filtered.filter(ev => ev.ts.getTime() >= rlFilter.from.getTime());
+  if (rlFilter.to) filtered = filtered.filter(ev => ev.ts.getTime() <= rlFilter.to.getTime());
+  const daily = dvRingsLoadedDaily(filtered);
+
+  const summaryEl = document.getElementById('rl-summary');
+  if (summaryEl) {
+    const machines = new Set(filtered.map(ev => ev.machine));
+    const chips = [];
+    const chip = (label, value, color) =>
+      '<span class="chip" style="font-size:11px;font-family:var(--f-mono);color:var(--text2);">' +
+      '<strong style="color:' + (color || 'var(--text)') + ';">' + value + '</strong> ' + label + '</span>';
+    if (rlFilter.from || rlFilter.to) {
+      chips.push(chip('filtered range', 'active', '#F59E0B'));
+    }
+    chips.push(chip('rings loaded', filtered.length, '#0D9488'));
+    chips.push(chip('day(s)', daily.length));
+    chips.push(chip('machine(s)', machines.size));
+    summaryEl.innerHTML = chips.join('');
+  }
+  dvRenderRingsLoadedChart(daily);
+  dvRenderRingsLoadedTable(daily);
+}
+
+function dvRingsLoadedFilteredRows() {
+  const events = dvRingsLoadedEvents();
+  let filtered = events;
+  if (rlFilter.from) filtered = filtered.filter(ev => ev.ts.getTime() >= rlFilter.from.getTime());
+  if (rlFilter.to) filtered = filtered.filter(ev => ev.ts.getTime() <= rlFilter.to.getTime());
+  return filtered;
+}
+
+function dvApplyRingsLoadedFilter() {
+  const fromEl = document.getElementById('rl-from');
+  const toEl = document.getElementById('rl-to');
+  const fromVal = fromEl ? fromEl.value : '';
+  const toVal = toEl ? toEl.value : '';
+  rlFilter.from = fromVal ? new Date(fromVal) : null;
+  rlFilter.to = toVal ? new Date(toVal) : null;
+  if (rlFilter.from && isNaN(rlFilter.from.getTime())) rlFilter.from = null;
+  if (rlFilter.to && isNaN(rlFilter.to.getTime())) rlFilter.to = null;
+  dvRenderRingsLoadedTab();
+}
+
+function dvResetRingsLoadedFilter() {
+  const fromEl = document.getElementById('rl-from');
+  const toEl = document.getElementById('rl-to');
+  if (fromEl) fromEl.value = '';
+  if (toEl) toEl.value = '';
+  rlFilter = { from: null, to: null };
+  dvRenderRingsLoadedTab();
+}
+
+function dvExportRingsLoadedCsv() {
+  const btn = document.getElementById('btn-export-rl');
+  const rows = dvRingsLoadedFilteredRows();
+  if (!rows.length) {
+    dvFlashExportEmpty('btn-export-rl');
+    return;
+  }
+  const csvContent = 'Date,Time,Machine,Slot,Serial Number\n' + rows
+    .map(ev => {
+      const t = ev.ts;
+      const pad = n => String(n).padStart(2, '0');
+      const date = t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate());
+      const time = pad(t.getHours()) + ':' + pad(t.getMinutes()) + ':' + pad(t.getSeconds());
+      return [date, time, dvCsvEscape(ev.machine), dvCsvEscape(ev.slot), dvCsvEscape(ev.serial)].join(',');
+    })
+    .join('\n');
+  dvTriggerCsvDownload(csvContent, 'Rings_Loaded_Daily.csv');
+}
+
+function dvRingsLoadedBlockHtml() {
+  return '' +
+    '<div id="rl-summary" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>' +
+    '<div class="dv-rl-filter">' +
+      '<label class="dv-rl-label">From <input type="datetime-local" id="rl-from" class="dv-rl-input"></label>' +
+      '<label class="dv-rl-label">To <input type="datetime-local" id="rl-to" class="dv-rl-input"></label>' +
+      '<button type="button" class="premium-export-btn" onclick="dvApplyRingsLoadedFilter()">Apply</button>' +
+      '<button type="button" class="premium-export-btn" onclick="dvResetRingsLoadedFilter()">Reset</button>' +
+      '<button type="button" id="btn-export-rl" class="premium-export-btn" onclick="dvExportRingsLoadedCsv()">' +
+        '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>' +
+        '<span>Export CSV</span>' +
+      '</button>' +
+    '</div>' +
+    '<div id="rl-chart" class="modal-chart-container" style="margin:14px 0;"></div>' +
+    '<div class="dv-drill-table-wrap">' +
+      '<table class="ca-table dv-drill-table">' +
+        '<thead><tr><th>Date</th><th>Machine</th><th>Rings Loaded</th></tr></thead>' +
+        '<tbody id="rl-table-body"></tbody>' +
+      '</table>' +
+    '</div>';
+}
+
+/* ── Daily Status (PASSED / FAILED timestamps) ─────────────────── */
+
+let dsChartInstance = null;
+let dsFilter = { from: null, to: null };
+
+function dvStatusEvents() {
+  const catName = dvCurrentCategory;
+  const map = {};
+  const put = (machine, slot, serial, status, ts) => {
+    if (catName) {
+      const cls = classifySerial(String(serial || '').trim());
+      if (!cls || cls.category !== catName) return;
+    }
+    const t = new Date(ts);
+    if (isNaN(t.getTime())) return;
+    map[String(machine) + '|' + String(slot) + '|' + String(serial) + '|' + String(status)] = { machine: machine, slot: String(slot), serial: String(serial), status: String(status), ts: t };
+  };
+  Object.entries(ringsStatusTimes || {}).forEach(([machine, slots]) => {
+    Object.entries(slots || {}).forEach(([slot, e]) => {
+      if (e && e.serial && e.status && e.ts) put(machine, slot, e.serial, e.status, e.ts);
+    });
+  });
+  (ringsStatusHistory || []).forEach(ev => {
+    if (ev && ev.machine != null && ev.slot != null && ev.serial && ev.status && ev.ts) put(ev.machine, ev.slot, ev.serial, ev.status, ev.ts);
+  });
+  return Object.values(map);
+}
+
+function dvStatusDaily(events) {
+  const perDay = new Map();
+  events.forEach(ev => {
+    const t = ev.ts;
+    const y = t.getFullYear();
+    const m = String(t.getMonth() + 1).padStart(2, '0');
+    const d = String(t.getDate()).padStart(2, '0');
+    const date = y + '-' + m + '-' + d;
+    if (!perDay.has(date)) perDay.set(date, { passed: new Map(), failed: new Map() });
+    const day = perDay.get(date);
+    const bucket = ev.status === 'PASSED' ? day.passed : day.failed;
+    bucket.set(ev.machine, (bucket.get(ev.machine) || 0) + 1);
+  });
+  return Array.from(perDay.entries())
+    .map(([date, day]) => ({
+      date: date,
+      passed: Array.from(day.passed.values()).reduce((s, c) => s + c, 0),
+      failed: Array.from(day.failed.values()).reduce((s, c) => s + c, 0),
+      passedMachines: Array.from(day.passed.entries()).sort((a, b) => b[1] - a[1]),
+      failedMachines: Array.from(day.failed.entries()).sort((a, b) => b[1] - a[1])
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function dvRenderStatusDailyChart(daily) {
+  const el = document.getElementById('ds-chart');
+  if (!el) return;
+  if (dsChartInstance) {
+    try { dsChartInstance.destroy(); } catch (e) {}
+    dsChartInstance = null;
+  }
+  el.innerHTML = '';
+  if (!daily.length) {
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">No PASSED/FAILED results in the selected range</div>';
+    return;
+  }
+  const themeMode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  dsChartInstance = new ApexCharts(el, {
+    chart: {
+      type: 'bar',
+      height: 250,
+      toolbar: { show: false },
+      stacked: true,
+      zoom: { enabled: false }
+    },
+    series: [
+      { name: 'Passed', data: daily.map(d => d.passed) },
+      { name: 'Failed', data: daily.map(d => d.failed) }
+    ],
+    xaxis: { categories: daily.map(d => d.date), labels: { style: { fontSize: '11px' }, rotate: -45 } },
+    colors: ['#22C55E', '#EF4444'],
+    plotOptions: { bar: { borderRadius: 4, columnWidth: '45%' } },
+    dataLabels: { enabled: false },
+    legend: { show: true, position: 'top' },
+    grid: getApexGrid(),
+    theme: { mode: themeMode },
+    tooltip: { theme: 'dark', y: { formatter: v => v + ' ring' + (v === 1 ? '' : 's') } }
+  });
+  dsChartInstance.render();
+}
+
+function dvRenderStatusDailyTable(daily) {
+  const tbody = document.getElementById('ds-table-body');
+  if (!tbody) return;
+  if (!daily.length) {
+    tbody.innerHTML = '<tr><td class="drilldown-empty" colspan="4">No PASSED/FAILED results in the selected range</td></tr>';
+    return;
+  }
+  let html = '';
+  let grandPassed = 0;
+  let grandFailed = 0;
+  daily.forEach(d => {
+    const machines = new Map();
+    d.passedMachines.forEach(([m, c]) => machines.set(m, { passed: c, failed: 0 }));
+    d.failedMachines.forEach(([m, c]) => {
+      if (machines.has(m)) machines.get(m).failed = c;
+      else machines.set(m, { passed: 0, failed: c });
+    });
+    machines.forEach((v, m) => {
+      html += '<tr><td style="font-family:var(--f-mono);font-weight:600;">' + d.date + '</td>' +
+        '<td style="font-family:var(--f-mono);">' + escapeHtml(m) + '</td>' +
+        '<td style="color:#22C55E;font-weight:700;">' + v.passed + '</td>' +
+        '<td style="color:#EF4444;font-weight:700;">' + v.failed + '</td></tr>';
+    });
+    grandPassed += d.passed;
+    grandFailed += d.failed;
+  });
+  html += '<tr style="border-top:2px solid var(--border);background:rgba(96,165,250,0.06);">' +
+    '<td class="drilldown-empty" colspan="2" style="font-weight:800;text-align:right;">Total</td>' +
+    '<td style="font-weight:800;color:#22C55E;">' + grandPassed + '</td>' +
+    '<td style="font-weight:800;color:#EF4444;">' + grandFailed + '</td></tr>';
+  tbody.innerHTML = html;
+}
+
+async function dvRenderStatusDailyTab() {
+  try {
+    await loadStatusHistory();
+  } catch (e) {}
+  const events = dvStatusEvents();
+  let filtered = events;
+  if (dsFilter.from) filtered = filtered.filter(ev => ev.ts.getTime() >= dsFilter.from.getTime());
+  if (dsFilter.to) filtered = filtered.filter(ev => ev.ts.getTime() <= dsFilter.to.getTime());
+  const daily = dvStatusDaily(filtered);
+
+  const summaryEl = document.getElementById('ds-summary');
+  if (summaryEl) {
+    const passed = filtered.filter(ev => ev.status === 'PASSED').length;
+    const failed = filtered.filter(ev => ev.status === 'FAILED').length;
+    const machines = new Set(filtered.map(ev => ev.machine));
+    const chips = [];
+    const chip = (label, value, color) =>
+      '<span class="chip" style="font-size:11px;font-family:var(--f-mono);color:var(--text2);">' +
+      '<strong style="color:' + (color || 'var(--text)') + ';">' + value + '</strong> ' + label + '</span>';
+    if (dsFilter.from || dsFilter.to) chips.push(chip('filtered range', 'active', '#F59E0B'));
+    chips.push(chip('passed', passed, '#22C55E'));
+    chips.push(chip('failed', failed, '#EF4444'));
+    chips.push(chip('day(s)', daily.length));
+    chips.push(chip('machine(s)', machines.size));
+    summaryEl.innerHTML = chips.join('');
+  }
+  dvRenderStatusDailyChart(daily);
+  dvRenderStatusDailyTable(daily);
+}
+
+function dvStatusFilteredRows() {
+  const events = dvStatusEvents();
+  let filtered = events;
+  if (dsFilter.from) filtered = filtered.filter(ev => ev.ts.getTime() >= dsFilter.from.getTime());
+  if (dsFilter.to) filtered = filtered.filter(ev => ev.ts.getTime() <= dsFilter.to.getTime());
+  return filtered;
+}
+
+function dvApplyStatusDailyFilter() {
+  const fromEl = document.getElementById('ds-from');
+  const toEl = document.getElementById('ds-to');
+  const fromVal = fromEl ? fromEl.value : '';
+  const toVal = toEl ? toEl.value : '';
+  dsFilter.from = fromVal ? new Date(fromVal) : null;
+  dsFilter.to = toVal ? new Date(toVal) : null;
+  if (dsFilter.from && isNaN(dsFilter.from.getTime())) dsFilter.from = null;
+  if (dsFilter.to && isNaN(dsFilter.to.getTime())) dsFilter.to = null;
+  dvRenderStatusDailyTab();
+}
+
+function dvResetStatusDailyFilter() {
+  const fromEl = document.getElementById('ds-from');
+  const toEl = document.getElementById('ds-to');
+  if (fromEl) fromEl.value = '';
+  if (toEl) toEl.value = '';
+  dsFilter = { from: null, to: null };
+  dvRenderStatusDailyTab();
+}
+
+function dvExportStatusDailyCsv() {
+  const rows = dvStatusFilteredRows();
+  if (!rows.length) {
+    dvFlashExportEmpty('btn-export-ds');
+    return;
+  }
+  const csvContent = 'Date,Time,Machine,Slot,Serial Number,Status\n' + rows
+    .map(ev => {
+      const t = ev.ts;
+      const pad = n => String(n).padStart(2, '0');
+      const date = t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate());
+      const time = pad(t.getHours()) + ':' + pad(t.getMinutes()) + ':' + pad(t.getSeconds());
+      return [date, time, dvCsvEscape(ev.machine), dvCsvEscape(ev.slot), dvCsvEscape(ev.serial), ev.status].join(',');
+    })
+    .join('\n');
+  dvTriggerCsvDownload(csvContent, 'Daily_Status.csv');
+}
+
+function dvStatusDailyBlockHtml() {
+  return '' +
+    '<div id="ds-summary" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>' +
+    '<div class="dv-rl-filter">' +
+      '<label class="dv-rl-label">From <input type="datetime-local" id="ds-from" class="dv-rl-input"></label>' +
+      '<label class="dv-rl-label">To <input type="datetime-local" id="ds-to" class="dv-rl-input"></label>' +
+      '<button type="button" class="premium-export-btn" onclick="dvApplyStatusDailyFilter()">Apply</button>' +
+      '<button type="button" class="premium-export-btn" onclick="dvResetStatusDailyFilter()">Reset</button>' +
+      '<button type="button" id="btn-export-ds" class="premium-export-btn" onclick="dvExportStatusDailyCsv()">' +
+        '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>' +
+        '<span>Export CSV</span>' +
+      '</button>' +
+    '</div>' +
+    '<div id="ds-chart" class="modal-chart-container" style="margin:14px 0;"></div>' +
+    '<div class="dv-drill-table-wrap">' +
+      '<table class="ca-table dv-drill-table">' +
+        '<thead><tr><th>Date</th><th>Machine</th><th>Passed</th><th>Failed</th></tr></thead>' +
+        '<tbody id="ds-table-body"></tbody>' +
+      '</table>' +
+    '</div>';
 }
 
 function dvOpenSkuDrilldown(machine) {
@@ -2677,6 +3136,39 @@ async function loadAssignedTimes() {
     }
 }
 
+async function loadAssignedHistory() {
+    try {
+        const res = await fetchWithTimeout('/api/rings/assigned-history?ts=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && Array.isArray(data.events)) ringsAssignedHistory = data.events;
+    } catch (e) {
+        console.warn('Could not load assigned history:', e);
+    }
+}
+
+async function loadStatusTimes() {
+    try {
+        const res = await fetchWithTimeout('/api/rings/status-times?ts=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && typeof data === 'object') ringsStatusTimes = data;
+    } catch (e) {
+        console.warn('Could not load status times:', e);
+    }
+}
+
+async function loadStatusHistory() {
+    try {
+        const res = await fetchWithTimeout('/api/rings/status-history?ts=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && Array.isArray(data.events)) ringsStatusHistory = data.events;
+    } catch (e) {
+        console.warn('Could not load status history:', e);
+    }
+}
+
 function captureAssignedTimes() {
     const changes = [];
     (ringsData || []).forEach(d => {
@@ -2697,6 +3189,29 @@ function captureAssignedTimes() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries: changes })
     }).catch(err => console.warn('Could not persist assigned times:', err));
+}
+
+function captureStatusTimes() {
+    const changes = [];
+    (ringsData || []).forEach(d => {
+        const sn = (d.serial_number || '').toString().trim();
+        if (!sn || sn === '--' || sn === 'N/A') return;
+        const st = (d.state || '').toUpperCase();
+        if (st !== 'PASSED' && st !== 'FAILED') return;
+        if (!ringsStatusTimes[d.file]) ringsStatusTimes[d.file] = {};
+        const e = ringsStatusTimes[d.file][d.slot];
+        if (!e || e.serial !== sn || e.status !== st) {
+            const ts = new Date().toISOString();
+            ringsStatusTimes[d.file][d.slot] = { serial: sn, status: st, ts };
+            changes.push({ machine: d.file, slot: d.slot, serial: sn, status: st, ts });
+        }
+    });
+    if (changes.length === 0) return;
+    fetch('/api/rings/status-times', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: changes })
+    }).catch(err => console.warn('Could not persist status times:', err));
 }
 
 async function loadRingsFromAPI() {
@@ -2848,6 +3363,7 @@ async function loadRingsFromAPI() {
         ringsData = allSlots;
         ringsFetchCompleted = true;
         captureAssignedTimes();
+        captureStatusTimes();
         try {
             populateRingsFilter();
             ringsRenderGrid();
@@ -2892,6 +3408,9 @@ function stopApiPolling() {
 async function startAutoSessionRefresh() {
     loadRemovedSlotsConfig();
     loadAssignedTimes();
+    loadAssignedHistory();
+    loadStatusTimes();
+    loadStatusHistory();
     loadSessionFilesFromServer().catch(err => console.warn('BDR initial fetch error:', err));
     loadRingsFromAPI().catch(err => console.warn('Rings initial fetch error:', err));
     startApiPolling();
@@ -6028,6 +6547,106 @@ function closeSerialBrowser() {
     document.getElementById('sn-modal-overlay').classList.remove('visible');
 }
 
+function applyRtoConfig(cfg) {
+    RTO_CONFIG = cfg || { ok: false, url: '', sheet: '', column: '', serials: [], count: 0, updated_at: null };
+    RTO_SERIAL_SET = new Set((cfg && cfg.serials || []).map(s => String(s).trim().toUpperCase()).filter(Boolean));
+    if (currentView === 'data-viz') renderDataViz();
+    if (currentView === 'rings') loadRingsFromAPI();
+}
+
+async function loadRtoConfig() {
+    try {
+        const res = await fetch('/api/settings/rto', { cache: 'no-store' });
+        if (!res.ok) return;
+        const cfg = await res.json();
+        applyRtoConfig(cfg);
+        const st = document.getElementById('rto-settings-status');
+        if (st) {
+            if (cfg.ok) {
+                st.textContent = 'RTO configured: ' + cfg.count + ' serial(s) from ' + (cfg.sheet || 'default sheet') + ' (updated ' + (cfg.updated_at || '--') + ')';
+                st.style.color = 'var(--ok)';
+            } else {
+                st.textContent = 'Not configured.';
+                st.style.color = 'var(--muted)';
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load RTO config', e);
+    }
+}
+
+function openSettings() {
+    const overlay = document.getElementById('settings-modal-overlay');
+    if (!overlay) return;
+    document.getElementById('rto-sheet-url').value = RTO_CONFIG.url || '';
+    document.getElementById('rto-sheet-name').value = RTO_CONFIG.sheet || '';
+    document.getElementById('rto-sheet-column').value = RTO_CONFIG.column || '';
+    const st = document.getElementById('rto-settings-status');
+    if (st) {
+        if (RTO_CONFIG.ok) {
+            st.textContent = 'RTO configured: ' + RTO_CONFIG.count + ' serial(s) from ' + (RTO_CONFIG.sheet || 'default sheet') + ' (updated ' + (RTO_CONFIG.updated_at || '--') + ')';
+            st.style.color = 'var(--ok)';
+        } else {
+            st.textContent = 'Not configured.';
+            st.style.color = 'var(--muted)';
+        }
+    }
+    overlay.classList.add('visible');
+}
+
+function closeSettings() {
+    const overlay = document.getElementById('settings-modal-overlay');
+    if (overlay) overlay.classList.remove('visible');
+}
+
+async function saveRtoSettings() {
+    const url = document.getElementById('rto-sheet-url').value.trim();
+    const sheet = document.getElementById('rto-sheet-name').value.trim();
+    const column = document.getElementById('rto-sheet-column').value.trim();
+    const st = document.getElementById('rto-settings-status');
+    const btn = document.getElementById('rto-save-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Syncing...'; }
+    try {
+        const res = await fetch('/api/settings/rto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, sheet, column })
+        });
+        const cfg = await res.json();
+        if (!res.ok || !cfg.ok) {
+            st.textContent = cfg.error || 'Failed to save RTO config.';
+            st.style.color = '#F87171';
+            return;
+        }
+        applyRtoConfig(cfg);
+        st.textContent = 'Saved. ' + cfg.count + ' serial(s) loaded from ' + (cfg.sheet || 'default sheet') + ' (updated ' + (cfg.updated_at || '--') + ')';
+        st.style.color = 'var(--ok)';
+    } catch (e) {
+        st.textContent = 'Network error while saving RTO config.';
+        st.style.color = '#F87171';
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save & Sync'; }
+    }
+}
+
+async function clearRtoSettings() {
+    const st = document.getElementById('rto-settings-status');
+    try {
+        const res = await fetch('/api/settings/rto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clear: true })
+        });
+        const cfg = await res.json();
+        applyRtoConfig(cfg);
+        st.textContent = 'RTO config cleared.';
+        st.style.color = 'var(--muted)';
+    } catch (e) {
+        st.textContent = 'Network error while clearing RTO config.';
+        st.style.color = '#F87171';
+    }
+}
+
 function exportSerialBrowserCSV() {
     const results = _serialBrowserFilteredResults;
     if (!results || results.length === 0) return;
@@ -6614,6 +7233,7 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
     setupViewToggleListeners();
     switchView('bdr');
+    loadRtoConfig();
     localStorage.removeItem('committedBdrMachineCount');
     localStorage.removeItem('committedRingsMachineCount');
     localStorage.removeItem('committedRingsSlotCount');

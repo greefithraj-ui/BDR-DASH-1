@@ -1822,6 +1822,7 @@
         #dv-summary-cards .pro-card { --dv-kpi-accent: #6366F1; }
         #dv-summary-cards .diesel-card { --dv-kpi-accent: #10B981; }
         #dv-summary-cards .lux-card { --dv-kpi-accent: #EAB308; }
+        #dv-summary-cards .rto-card { --dv-kpi-accent: #EC4899; }
         #dv-summary-cards .kpi-card { cursor: pointer; }
         #dv-summary-cards .kpi-card.active {
             border-color: color-mix(in srgb, var(--dv-kpi-accent) 70%, var(--border));
@@ -2082,6 +2083,42 @@
         .premium-export-btn:active {
             transform: translateY(1px);
         }
+        /* Rings Loaded Daily filter bar */
+        .dv-rl-filter {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+        }
+        .dv-rl-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--muted);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .dv-rl-input {
+            appearance: none;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 12px;
+            font-family: var(--f-mono);
+            padding: 6px 8px;
+        }
+        .dv-rl-input:focus {
+            outline: 2px solid var(--accent, #38bdf8);
+            outline-offset: -2px;
+        }
+        [data-theme="dark"] .dv-rl-input { color-scheme: dark; }
         /* Data Viz Master Tabbed Architecture */
         .premium-nav-tabs {
             display: flex;
@@ -2585,6 +2622,7 @@
         .badge-lux { background: #EAB308; color: #422006; }
         .badge-wabisabi { background: #8B5CF6; color: #fff; }
         .badge-rtconversion { background: #F59E0B; color: #451a03; }
+        .badge-rto { background: #EC4899; color: #fff; }
         .slot-dimmed { opacity: 0; pointer-events: none; }
         .slot-pass { background: var(--slot-pass-bg); color: var(--slot-pass-color); }
         .slot-ok { background: var(--slot-ok-bg); color: var(--slot-ok-color); }
@@ -3256,6 +3294,20 @@
 }
 .mes-sidebar-item:hover { color: var(--text); background: var(--border); }
 .mes-sidebar-item.active { color: var(--blue); background: var(--blue-bg); }
+.mes-sidebar-item.mes-settings-btn { margin-top: auto; color: var(--muted); }
+.mes-sidebar-item.mes-settings-btn:hover { color: var(--blue); background: var(--blue-bg); }
+
+#settings-modal-overlay .sn-modal { height: auto; max-height: 85vh; }
+.sn-settings-hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0 0 16px; }
+.sn-settings-field { margin-bottom: 14px; }
+.sn-settings-field label {
+    display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--text); margin-bottom: 6px;
+}
+.sn-settings-field .sn-settings-opt { font-weight: 400; text-transform: none; color: var(--muted); }
+.sn-settings-status { font-size: 12px; margin: 4px 0 16px; min-height: 16px; }
+.sn-settings-actions { display: flex; gap: 8px; }
+.sn-settings-actions .toggle-btn { display: inline-flex; align-items: center; gap: 6px; }
 .mes-workspace-container {
     display: flex;
     flex-direction: column;

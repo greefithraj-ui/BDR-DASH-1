@@ -33,6 +33,9 @@
         <button class="mes-sidebar-item" onclick="switchView('diagnostics')" title="Diagnostics">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
         </button>
+        <button class="mes-sidebar-item mes-settings-btn" onclick="openSettings()" title="Settings">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
     </div>
     <div class="mes-workspace-container">
 <div class="container">
@@ -145,6 +148,7 @@
                     <button data-cat="WABI SABI" onclick="setSerialBrowserCategory('WABI SABI')">Wabi Sabi</button>
                     <button data-cat="RT CONVERSION" onclick="setSerialBrowserCategory('RT CONVERSION')">RT Conversion</button>
                     <button data-cat="LUX" onclick="setSerialBrowserCategory('LUX')">LUX</button>
+                    <button data-cat="RTO" onclick="setSerialBrowserCategory('RTO')">RTO</button>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:400px;">
                     <button class="sn-bulk-toggle" id="sn-bulk-toggle" onclick="toggleSerialBrowserBulk()" title="Toggle bulk search mode">
@@ -162,6 +166,46 @@
             </div>
             <div class="sn-modal-body" id="sn-modal-body">
                 <div class="sn-empty-state">Start typing a serial number or part of it above</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="sn-modal-overlay" id="settings-modal-overlay" onclick="if(event.target===this)closeSettings()">
+        <div class="sn-modal" style="max-width:620px;">
+            <div class="sn-modal-header">
+                <span class="sn-modal-title">Settings &mdash; RTO Category</span>
+                <button class="sn-modal-close" onclick="closeSettings()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="sn-modal-body" style="padding:20px;display:block;">
+                <p class="sn-settings-hint">
+                    Machines whose serial number appears in the column below will be classified as <b>RTO</b>
+                    in the Data Visualisation view. The Google Sheet must be shared publicly
+                    (<i>Anyone with the link</i>).
+                </p>
+                <div class="sn-settings-field">
+                    <label for="rto-sheet-url">Google Sheet URL</label>
+                    <input class="sn-modal-input" id="rto-sheet-url" type="text" placeholder="https://docs.google.com/spreadsheets/d/..."/>
+                </div>
+                <div class="sn-settings-field">
+                    <label for="rto-sheet-name">Sheet / Tab Name <span class="sn-settings-opt">(optional)</span></label>
+                    <input class="sn-modal-input" id="rto-sheet-name" type="text" placeholder="e.g. Sheet1"/>
+                </div>
+                <div class="sn-settings-field">
+                    <label for="rto-sheet-column">Column Name</label>
+                    <input class="sn-modal-input" id="rto-sheet-column" type="text" placeholder="e.g. Serial Number or A"/>
+                </div>
+                <div class="sn-settings-status" id="rto-settings-status">Not configured.</div>
+                <div class="sn-settings-actions">
+                    <button class="toggle-btn active" id="rto-save-btn" onclick="saveRtoSettings()" style="border-color:var(--accent,#38BDF8);color:var(--accent,#38BDF8);">
+                        Save &amp; Sync
+                    </button>
+                    <button class="toggle-btn" id="rto-clear-btn" onclick="clearRtoSettings()" style="color:#F87171;">
+                        Clear
+                    </button>
+                </div>
             </div>
         </div>
     </div>
