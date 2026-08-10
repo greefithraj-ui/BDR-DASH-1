@@ -80,6 +80,8 @@ let ringsFileSizes = new Map();
 let ringsWatchTimer = null;
 let ringsWatching = false;
 let ringsSelectedSlot = null;
+let ringsSelectedData = null;
+let ringsSelectedSlotData = null;
 let ringsSelectedMachine = null;
 let ringsStatusFilter = '';
 let ringsKpiFilter = '';
@@ -420,7 +422,8 @@ async function triggerSlotAWM(machine, slot, action, statusId, button) {
 function switchView(view) {
   currentView = view;
   const ws = document.querySelector('.mes-workspace-container');
-  if (ws) ws.classList.toggle('ws-non-bdr', view !== 'bdr');
+  if (ws) ws.classList.toggle('ws-non-bdr', view !== 'bdr' && view !== 'rings');
+  if (ws) ws.classList.toggle('ws-rings', view === 'rings');
   const bdrContent = document.getElementById('dashboard-content');
   const ringsView = document.getElementById('rings-view');
   const dataVizView = document.getElementById('data-viz-view');
@@ -861,6 +864,14 @@ function ringsOpenDetail(d, slotKey, el) {
   document.querySelectorAll('#rings-grid .slot-cell').forEach(c => c.classList.remove('active'));
   if (el) el.classList.add('active');
   ringsSelectedSlot = slotKey;
+  ringsSelectedData = d;
+
+  const md = ALL_MACHINE_DATA && ALL_MACHINE_DATA[d.file];
+  let slotDetail = null;
+  if (md && md.slots) slotDetail = md.slots[d.slot] || null;
+  ringsSelectedSlotData = slotDetail;
+
+  const batt = slotDetail && slotDetail.battery_current != null ? slotDetail.battery_current : null;
 
   detail.classList.remove('hidden');
   document.getElementById('rings-detail-slot').textContent = 'SLOT ' + slotKey;
@@ -869,8 +880,11 @@ function ringsOpenDetail(d, slotKey, el) {
   document.getElementById('rings-detail-state').textContent = d.state || '--';
   document.getElementById('rings-detail-state').className = 'badge ' + (d.state === 'BDR_RUNNING' ? 'ok' : d.state === 'PASSED' || d.state === 'PASS' ? 'pass' : d.state === 'FAILED' ? 'danger' : 'neutral');
   document.getElementById('rings-detail-fw').textContent = d.firmware_version || '--';
-  renderChargerControls('rings-charger-controls', d.file || ringsSelectedMachine, slotKey, true);
-  renderAWMControls('rings-awm-controls', d.file || ringsSelectedMachine, slotKey, true);
+  const battEl = document.getElementById('rings-detail-batt');
+  if (battEl) {
+    battEl.textContent = batt != null ? batt + '%' : '--';
+    battEl.className = 'ring-identity-field-value' + (batt != null ? (batt <= 20 ? ' batt-critical' : batt <= 40 ? ' batt-low' : ' batt-ok') : '');
+  }
 
   requestAnimationFrame(() => {
     const top = detail.getBoundingClientRect().top + window.scrollY - 16;
@@ -883,6 +897,100 @@ function ringsCloseDetail() {
   if (detail) detail.classList.add('hidden');
   document.querySelectorAll('#rings-grid .slot-cell').forEach(c => c.classList.remove('active'));
   ringsSelectedSlot = null;
+  ringsSelectedData = null;
+  ringsSelectedSlotData = null;
+}
+
+function ringsGetStatusEvents(d) {
+  const events = [];
+  const sn = d && d.serial_number ? d.serial_number : null;
+  if (!d || !sn) return events;
+  (ringsStatusHistory || []).forEach(ev => {
+    if (ev && String(ev.machine) === String(d.file) && String(ev.slot) === String(d.slot) && String(ev.serial) === String(sn) && ev.status && ev.ts) {
+      const t = new Date(ev.ts);
+      if (!isNaN(t.getTime())) events.push({ status: String(ev.status).toUpperCase(), ts: t });
+    }
+  });
+  const st = ringsStatusTimes && ringsStatusTimes[d.file] && ringsStatusTimes[d.file][d.slot];
+  if (st && st.serial === sn && st.status && st.ts) {
+    const t = new Date(st.ts);
+    if (!isNaN(t.getTime())) events.push({ status: String(st.status).toUpperCase(), ts: t });
+  }
+  const seen = new Set();
+  return events.filter(e => { const k = e.status + '|' + e.ts.getTime(); if (seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a, b) => a.ts - b.ts);
+}
+
+function ringsFmtTime(t) {
+  if (!t) return '--';
+  return t.toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) + ' ' + pad2(t.getHours()) + ':' + pad2(t.getMinutes());
+}
+
+function ringsOpenAnalysis() {
+  const d = ringsSelectedData;
+  const overlay = document.getElementById('rings-analysis-overlay');
+  if (!d || !overlay) return;
+
+  const s = ringsSelectedSlotData || {};
+  const batt = s.battery_current != null ? s.battery_current : null;
+  const completedWorkouts = calculateCompletedCycleWorkouts(s);
+  const avgBdr = getSlotAvgBdr(s, completedWorkouts);
+  const cycles = (s.bdr_state && s.bdr_state.completed_cycles) || [];
+  const phase = (s.bdr_state && s.bdr_state.phase) || 'UNKNOWN';
+  const assigned = ringAssignedTimestamp(d);
+  const events = ringsGetStatusEvents(d);
+
+  const stateColor = ringsStatusColors[d.state] || '#6B7280';
+  let avgBdrStr = '--';
+  if (avgBdr != null && !isNaN(avgBdr)) avgBdrStr = parseFloat(avgBdr).toFixed(2);
+  const workoutCount = completedWorkouts ? completedWorkouts.length : 0;
+
+  let timelineHtml = '';
+  if (assigned) {
+    timelineHtml += '<div class="ring-timeline-entry"><span class="ring-timeline-dot" style="background:#F59E0B;"></span><span class="ring-timeline-label">ASSIGNED</span><span class="ring-timeline-time">' + ringsFmtTime(assigned) + '</span></div>';
+  }
+  events.forEach(ev => {
+    const col = ringsStatusColors[ev.status] || '#6B7280';
+    timelineHtml += '<div class="ring-timeline-entry"><span class="ring-timeline-dot" style="background:' + col + ';"></span><span class="ring-timeline-label">' + ev.status + '</span><span class="ring-timeline-time">' + ringsFmtTime(ev.ts) + '</span></div>';
+  });
+  if (timelineHtml === '') timelineHtml = '<div class="ring-analysis-muted">No lifecycle events recorded for this ring yet.</div>';
+
+  document.getElementById('rings-analysis-sub').textContent = (d.serial_number || '--') + '  /  SLOT ' + d.slot;
+
+  const body = document.getElementById('rings-analysis-body');
+  body.innerHTML =
+    '<div class="ring-analysis-grid">' +
+      '<div class="ring-analysis-card ring-identity-summary">' +
+        '<span class="ring-analysis-card-title">RING IDENTITY</span>' +
+        '<div class="ring-id-row"><span>Serial Number</span><b>' + (d.serial_number || '--') + '</b></div>' +
+        '<div class="ring-id-row"><span>MAC ID</span><b>' + (d.ring_mac || '--') + '</b></div>' +
+        '<div class="ring-id-row"><span>Firmware</span><b>' + (d.firmware_version || '--') + '</b></div>' +
+        '<div class="ring-id-row"><span>Battery</span><b class="' + (batt != null ? (batt <= 20 ? 'batt-critical' : batt <= 40 ? 'batt-low' : 'batt-ok') : '') + '">' + (batt != null ? batt + '%' : '--') + '</b></div>' +
+        '<div class="ring-id-row"><span>Current State</span><b style="color:' + stateColor + ';">' + (d.state || '--') + '</b></div>' +
+      '</div>' +
+      '<div class="ring-analysis-card">' +
+        '<span class="ring-analysis-card-title">LIFECYCLE TIMELINE</span>' +
+        '<div class="ring-timeline-list">' + timelineHtml + '</div>' +
+      '</div>' +
+      '<div class="ring-analysis-card">' +
+        '<span class="ring-analysis-card-title">DISCHARGE PERFORMANCE</span>' +
+        '<div class="ring-kpi-grid-mini">' +
+          '<div class="ring-kpi-mini"><span class="ring-kpi-mini-label">COMPLETED CYCLES</span><b>' + cycles.length + '</b></div>' +
+          '<div class="ring-kpi-mini"><span class="ring-kpi-mini-label">WORKOUTS</span><b>' + workoutCount + '</b></div>' +
+          '<div class="ring-kpi-mini"><span class="ring-kpi-mini-label">AVG BDR</span><b>' + avgBdrStr + '</b></div>' +
+          '<div class="ring-kpi-mini"><span class="ring-kpi-mini-label">PHASE</span><b>' + phase + '</b></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function ringsCloseAnalysis() {
+  const overlay = document.getElementById('rings-analysis-overlay');
+  if (overlay) overlay.style.display = 'none';
+  document.body.style.overflow = '';
 }
 
 function ringsFilterGrid() {
@@ -1542,6 +1650,27 @@ function dvWorkoutDistBodyHtml(catRows) {
   }).join('');
 }
 
+function dvWorkoutDistTotalsHtml(catRows) {
+  const rows = dvWorkoutDistRows(catRows);
+  const totals = new Array(DV_WORKOUT_MAX + 1).fill(0);
+  let occupied = 0;
+  rows.forEach(([, m]) => {
+    occupied += m.occupied;
+    for (let w = 0; w <= DV_WORKOUT_MAX; w++) totals[w] += m.buckets[w];
+  });
+  const pill = (label, val, extraCls) =>
+    '<span class="dv-workout-total-pill' + (extraCls || '') + '">' +
+      '<span class="dv-workout-total-label">' + label + '</span>' +
+      '<span class="dv-workout-total-value">[' + val + ']</span>' +
+    '</span>';
+  let html = '<div class="dv-workout-total-strip">' +
+    pill('Total', occupied);
+  for (let w = 0; w <= DV_WORKOUT_MAX; w++) {
+    html += pill(w === 0 ? 'No Workout' : ordinal(w), totals[w], w === 0 ? ' dv-wk-0' : w === DV_WORKOUT_MAX ? ' dv-wk-6' : '');
+  }
+  return html + '</div>';
+}
+
 function dvWorkoutDistTableHtml(catRows) {
   let head = '<thead><tr><th>Machine</th><th>Serials</th><th>No Workout</th>';
   for (let w = 1; w <= DV_WORKOUT_MAX; w++) {
@@ -1620,6 +1749,7 @@ function renderDvKpiDrilldown(catName, color) {
 
     const cycleSection =
       '<div class="section-label" style="margin-bottom:8px;">Cycle Analysis &mdash; Workout Distribution (per Machine)</div>' +
+      dvWorkoutDistTotalsHtml(rows) +
       '<div class="dv-drill-table-wrap">' + dvWorkoutDistTableHtml(rows, color) + '</div>';
 
     const drillTabs =
