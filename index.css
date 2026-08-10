@@ -3835,3 +3835,226 @@
             color: var(--muted);
             margin-top: 4px;
         }
+
+        /* ── BLE Failed Rings ──────────────────────────────── */
+        .ble-failed-btn {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 8px 6px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(239, 68, 68, 0.45);
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.16), rgba(127, 29, 29, 0.22));
+            color: #F87171;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            font-family: var(--f-mono, monospace);
+            cursor: pointer;
+            transition: all 0.22s ease;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .ble-failed-btn:hover {
+            transform: translateY(-1px);
+            border-color: rgba(248, 113, 113, 0.75);
+            color: #FCA5A5;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.28), rgba(127, 29, 29, 0.36));
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+        }
+        .ble-failed-btn:active { transform: translateY(0); }
+        .ble-failed-btn svg { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35)); }
+        .ble-failed-btn-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #EF4444, #B91C1C);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 800;
+            box-shadow: 0 1px 4px rgba(239, 68, 68, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+        }
+        .ble-failed-btn[data-pulse="true"] .ble-failed-btn-count {
+            animation: ble-pulse 1.6s ease-in-out infinite;
+        }
+        @keyframes ble-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
+            50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0), inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
+        }
+
+        .ble-failed-subtitle {
+            font-size: 11px;
+            color: var(--muted);
+            font-family: var(--f-mono, monospace);
+        }
+        .ble-fail-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(239, 68, 68, 0.15);
+            color: #F87171;
+            font-size: 11px;
+            font-weight: 700;
+            font-family: var(--f-mono, monospace);
+        }
+
+        /* ── BLE Failed Modal ─────────────────────────────── */
+        .ble-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(3, 7, 18, 0.72);
+            backdrop-filter: blur(6px);
+            z-index: 4000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            animation: ble-overlay-in 0.18s ease;
+        }
+        @keyframes ble-overlay-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .ble-modal-box {
+            width: min(980px, 96%);
+            background: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 92%, #7f1d1d));
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 16px;
+            box-shadow: 0 28px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.03), 0 0 42px rgba(239, 68, 68, 0.08);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: ble-box-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes ble-box-in {
+            from { opacity: 0; transform: translateY(14px) scale(0.985); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .ble-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 18px;
+            border-bottom: 1px solid rgba(239, 68, 68, 0.22);
+            background: linear-gradient(90deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.02));
+        }
+        .ble-modal-heading { min-width: 0; }
+        .ble-modal-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            color: var(--text);
+            text-transform: uppercase;
+        }
+        .ble-modal-warn-ico {
+            color: #F87171;
+            filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.6));
+        }
+        .ble-modal-subtitle {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 3px;
+            font-family: var(--f-mono, monospace);
+        }
+        .ble-modal-close {
+            flex-shrink: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            background: rgba(239, 68, 68, 0.08);
+            color: #F87171;
+            border-radius: 8px;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .ble-modal-close:hover { color: #fff; background: rgba(239, 68, 68, 0.35); border-color: rgba(248, 113, 113, 0.6); }
+        .ble-modal-body {
+            max-height: 72vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .ble-modal-scroll {
+            overflow: auto;
+            padding: 0;
+        }
+        .ble-modal-scroll table { width: 100%; border-collapse: collapse; }
+        .ble-modal-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: color-mix(in srgb, var(--surface) 90%, #450a0a);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #FCA5A5;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(239, 68, 68, 0.25);
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        #ble-failed-tbody td {
+            font-size: 12px;
+            padding: 7px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            color: var(--text);
+            white-space: nowrap;
+        }
+        #ble-failed-tbody tr {
+            transition: background 0.15s ease;
+        }
+        #ble-failed-tbody tr:hover td {
+            background: rgba(239, 68, 68, 0.07);
+        }
+
+        /* ── BLE Failed Matrix Cell Chip ───────────────────── */
+        .ble-cell-chip {
+            position: absolute;
+            bottom: 2px;
+            left: 2px;
+            right: 2px;
+            font-size: 8px;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            line-height: 1;
+            text-align: center;
+            text-transform: uppercase;
+            color: #fff;
+            background: linear-gradient(135deg, rgba(220, 38, 38, 0.96), rgba(153, 27, 27, 0.96));
+            border-radius: 3px;
+            padding: 2px 3px 2px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            pointer-events: none;
+            z-index: 5;
+        }
+        .slot-cell.slot-ble-failed {
+            box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.9);
+            animation: ble-cell-glow 2.2s ease-in-out infinite;
+        }
+        @keyframes ble-cell-glow {
+            0%, 100% { box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.9), 0 0 0 0 rgba(239, 68, 68, 0); }
+            50% { box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.9), 0 0 10px 1px rgba(239, 68, 68, 0.35); }
+        }

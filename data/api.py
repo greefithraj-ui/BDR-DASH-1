@@ -62,6 +62,9 @@ from postgres_db import (
     get_live_rings_fallback,
     get_live_rings_machine_fallback,
     list_machines_fallback,
+    get_ble_failed_rings,
+    get_ble_failed_history,
+    get_ble_failed_fallback,
 )
 
 
@@ -465,12 +468,22 @@ def get_machine_charger_status(machine: str):
             continue
         charger_on = slot_data.get("charger_on")
         current_ma = slot_data.get("charging_current_ma")
-        if charger_on is None:
-            state = "unknown"
-            source = "current_only"
-        else:
+        if charger_on is not None:
             state = "on" if bool(charger_on) else "off"
             source = "charger_on"
+        elif isinstance(current_ma, (int, float)) and not isinstance(current_ma, bool):
+            if current_ma > 0:
+                state = "on"
+                source = "current_inferred"
+            elif current_ma < 0:
+                state = "off"
+                source = "current_inferred"
+            else:
+                state = "unknown"
+                source = "current_zero"
+        else:
+            state = "unknown"
+            source = "current_missing"
         slots[str(slot_key)] = {
             "state": state,
             "source": source,
@@ -616,6 +629,58 @@ def get_all_rings():
         import traceback
         traceback.print_exc()
         return CompactJSONResponse(content={"error": str(e)}, status_code=500)
+
+
+_ble_failed_cache = None
+_ble_failed_cache_ts = 0.0
+
+
+@app.get("/api/ble-failed/rings")
+def get_ble_failed_rings_endpoint():
+    global _ble_failed_cache, _ble_failed_cache_ts
+    now = time.time()
+    with _cache_lock:
+        if _ble_failed_cache is not None and (now - _ble_failed_cache_ts) < _CACHE_TTL:
+            return CompactJSONResponse(content=_ble_failed_cache)
+    try:
+        rows = None
+        if pg_available():
+            try:
+                rows = get_ble_failed_rings()
+            except Exception as e:
+                print(f"[API] ble-failed DB query failed, falling back to files: {e}")
+        if rows is None:
+            rows = get_ble_failed_fallback()["active"]
+        summary = {
+            "active_count": len(rows),
+            "machines_affected": len({r["machine"] for r in rows}),
+            "total_failures": sum(r.get("fail_count") or 0 for r in rows),
+        }
+        content = {"active": rows, "summary": summary}
+        with _cache_lock:
+            _ble_failed_cache = content
+            _ble_failed_cache_ts = time.time()
+        return CompactJSONResponse(content=content)
+    except Exception as e:
+        print(f"[API] Error in get_ble_failed_rings_endpoint: {e}")
+        return CompactJSONResponse(content={"active": [], "summary": {"active_count": 0, "machines_affected": 0, "total_failures": 0}}, status_code=200)
+
+
+@app.get("/api/ble-failed/history")
+def get_ble_failed_history_endpoint(limit: int = 50):
+    try:
+        rows = None
+        if pg_available():
+            try:
+                rows = get_ble_failed_history(limit=limit)
+            except Exception as e:
+                print(f"[API] ble-failed history DB query failed, falling back to files: {e}")
+        if rows is None:
+            rows = get_ble_failed_fallback()["history"]
+        return CompactJSONResponse(content={"history": rows})
+    except Exception as e:
+        print(f"[API] Error in get_ble_failed_history_endpoint: {e}")
+        return CompactJSONResponse(content={"history": []})
 
 
 ASSIGNED_TIMES_LOCK = threading.Lock()

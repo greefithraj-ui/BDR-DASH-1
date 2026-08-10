@@ -91,6 +91,24 @@ function normalizeAqcMachineName(name) {
   return String(name || '').trim().toLowerCase().replace(/\s+/g, '-').replace(/^aqc-?0?(\d)$/i, 'aqc-0$1');
 }
 
+function getBleFailedCount(slotData) {
+  if (!slotData || typeof slotData !== 'object') return null;
+  const err = slotData.error;
+  if (typeof err !== 'string') return null;
+  const m = err.match(/BLE\s+failed\s+(\d+)x/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function bleCellChipHtml(slotData) {
+  const n = getBleFailedCount(slotData);
+  if (n == null) return '';
+  return '<span class="ble-cell-chip">BLE FAILED ' + n + 'x</span>';
+}
+
+function isBleFailedSlot(slotData) {
+  return getBleFailedCount(slotData) != null;
+}
+
 function renderChargerControls(containerId, machineName, slot, enabled) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -517,7 +535,7 @@ async function loadRingsFromDir() {
       if (data && typeof data === 'object') {
         Object.entries(data).forEach(([slotId, s]) => {
           if (s && typeof s === 'object') {
-            slots.push({ slot: slotId, file: fname, serial_number: s.serial_number || '--', ring_mac: s.ring_mac || '--', ring_name: s.ring_name || '--', state: s.state || '--', firmware_version: s.firmware_version || '--', dead_state: s.dead_state || null, discharge_connect_failures: s.discharge_connect_failures || 0, hardware_version: s.hardware_version || null, step_statuses: s.step_statuses || {}, queued_at: s.queued_at || null });
+            slots.push({ slot: slotId, file: fname, serial_number: s.serial_number || '--', ring_mac: s.ring_mac || '--', ring_name: s.ring_name || '--', state: s.state || '--', error: s.error || null, firmware_version: s.firmware_version || '--', dead_state: s.dead_state || null, discharge_connect_failures: s.discharge_connect_failures || 0, hardware_version: s.hardware_version || null, step_statuses: s.step_statuses || {}, queued_at: s.queued_at || null });
           }
         });
       }
@@ -698,9 +716,9 @@ function ringsRenderGrid() {
     }
 
     const el = document.createElement('div');
-    el.className = 'slot-cell ' + cls + (dimmed ? ' ring-dimmed' : '');
+    el.className = 'slot-cell ' + cls + (dimmed ? ' ring-dimmed' : '') + (d && isBleFailedSlot(d) ? ' slot-ble-failed' : '');
     el.dataset.slot = key;
-    el.innerHTML = key + slotBadgeHtml(d ? d.serial_number : '--');
+    el.innerHTML = key + slotBadgeHtml(d ? d.serial_number : '--') + bleCellChipHtml(d);
     el.onclick = d ? () => ringsOpenDetail(d, key, el) : null;
     grid.appendChild(el);
   }
@@ -915,19 +933,23 @@ function ringsExportCSV() {
   if (ringsStatusFilter && !ringsKpiFilter) filtered = filtered.filter(d => (d.state || '').toUpperCase() === ringsStatusFilter);
   if (ringsSelectedMachine) filtered = filtered.filter(d => d.file === ringsSelectedMachine);
   if (filtered.length === 0) { alert('No data matches current filters.'); return; }
-  const rows = [['Date','Time','Machine','Slot','SKU','Category','Battery %','Serial Number','MAC ID','Status']];
+  const rows = [['Date','Time','Machine','Slot','Serial Number','SKU','Category','Battery %','MAC ID','Avg BDR','Status']];
   filtered.forEach(d => {
     let batt = '';
+    let avgBdr = '0.00';
     const md = ALL_MACHINE_DATA && ALL_MACHINE_DATA[d.file];
+    let s = null;
     if (md && md.slots) {
-      const s = md.slots[d.slot];
+      s = md.slots[d.slot] || null;
       if (s && s.battery_current != null) batt = s.battery_current;
+      if (s) avgBdr = getSlotAvgBdr(s, calculateCompletedCycleWorkouts(s)).toFixed(2);
     }
     const cls = classifySerial(d.serial_number) || {};
     const t = ringAssignedTimestamp(d);
     const date = t ? t.getFullYear() + '-' + pad2(t.getMonth() + 1) + '-' + pad2(t.getDate()) : '';
     const time = t ? pad2(t.getHours()) + ':' + pad2(t.getMinutes()) + ':' + pad2(t.getSeconds()) : '';
-    rows.push([date, time, d.file, d.slot, cls.sku || '', cls.category || '', batt, d.serial_number, d.ring_mac, d.state]);
+    const status = (isBleFailedSlot(d) || (s && isBleFailedSlot(s))) ? 'BLE FAILED' : (d.state || '');
+    rows.push([date, time, d.file, d.slot, d.serial_number, cls.sku || '', cls.category || '', batt, d.ring_mac, avgBdr, status]);
   });
   const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -2999,6 +3021,7 @@ const RINGS_API = '/api/rings';
 
 let bdrPollTimer = null;
 let ringsPollTimer = null;
+let chargerPollTimer = null;
 let lastBdrFingerprint = null;
 let lastRingsFingerprint = null;
 let pendingRingsFingerprint = null;
@@ -3247,6 +3270,7 @@ async function loadRingsFromAPI() {
                                     ring_mac: s.ring_mac || '--',
                                     ring_name: s.ring_name || '--',
                                     state: s.state || '--',
+                                    error: s.error || null,
                                     firmware_version: s.firmware_version || '--',
                                     dead_state: s.dead_state || null,
                                     discharge_connect_failures: s.discharge_connect_failures || 0,
@@ -3314,6 +3338,7 @@ async function loadRingsFromAPI() {
                                     ring_mac: s.ring_mac || '--',
                                     ring_name: s.ring_name || '--',
                                     state: s.state || '--',
+                                    error: s.error || null,
                                     firmware_version: s.firmware_version || '--',
                                     dead_state: s.dead_state || null,
                                     discharge_connect_failures: s.discharge_connect_failures || 0,
@@ -3381,11 +3406,42 @@ async function loadRingsFromAPI() {
 }
 
 const API_POLL_MS = 5000;
+const CHARGER_POLL_MS = 30;
+
+function isBdrDetailOpen() {
+    const panel = document.getElementById('detail-panel');
+    return !!(panel && panel.classList.contains('visible') && currentSlotPanel && CURRENT_MACHINE);
+}
+
+function isRingsDetailOpen() {
+    const panel = document.getElementById('rings-detail-panel');
+    return !!(panel && !panel.classList.contains('hidden') && ringsSelectedSlot && ringsSelectedMachine);
+}
+
+async function tickChargerStatusPoll() {
+    const bdrOpen = isBdrDetailOpen();
+    const ringsOpen = isRingsDetailOpen();
+    if (!bdrOpen && !ringsOpen) return;
+
+    const jobs = [];
+    if (bdrOpen) jobs.push({ machine: CURRENT_MACHINE, containerId: 'dt-charger-controls', slot: currentSlotPanel });
+    if (ringsOpen) jobs.push({ machine: ringsSelectedMachine, containerId: 'rings-charger-controls', slot: ringsSelectedSlot });
+
+    for (const job of jobs) {
+        try {
+            await refreshMachineChargerStatus(job.machine, true);
+            updateChargerStateBadge(job.containerId, job.machine, job.slot);
+        } catch (err) {
+            console.warn('Charger status poll error:', job.machine, err);
+        }
+    }
+}
 
 function startApiPolling() {
     if (bdrPollTimer && ringsPollTimer) return;
     if (bdrPollTimer) { clearInterval(bdrPollTimer); bdrPollTimer = null; }
     if (ringsPollTimer) { clearInterval(ringsPollTimer); ringsPollTimer = null; }
+    if (chargerPollTimer) { clearInterval(chargerPollTimer); chargerPollTimer = null; }
     bdrFetchInFlight = false;
     ringsFetchInFlight = false;
     // Initial fetches are done by startAutoSessionRefresh before calling this; only set up intervals here
@@ -3395,12 +3451,15 @@ function startApiPolling() {
     ringsPollTimer = setInterval(() => {
         loadRemovedSlotsConfig();
         loadRingsFromAPI().catch(err => console.warn('Rings poll error:', err));
+        loadBleFailedRings();
     }, API_POLL_MS);
+    chargerPollTimer = setInterval(tickChargerStatusPoll, CHARGER_POLL_MS);
 }
 
 function stopApiPolling() {
     if (bdrPollTimer) { clearInterval(bdrPollTimer); bdrPollTimer = null; }
     if (ringsPollTimer) { clearInterval(ringsPollTimer); ringsPollTimer = null; }
+    if (chargerPollTimer) { clearInterval(chargerPollTimer); chargerPollTimer = null; }
     bdrFetchInFlight = false;
     ringsFetchInFlight = false;
 }
@@ -3413,7 +3472,63 @@ async function startAutoSessionRefresh() {
     loadStatusHistory();
     loadSessionFilesFromServer().catch(err => console.warn('BDR initial fetch error:', err));
     loadRingsFromAPI().catch(err => console.warn('Rings initial fetch error:', err));
+    loadBleFailedRings();
     startApiPolling();
+}
+
+async function loadBleFailedRings() {
+    try {
+        const res = await fetchWithTimeout('/api/ble-failed/rings?ts=' + Date.now(), { cache: 'no-store' });
+        if (res.status === 503) return;
+        if (!res.ok) throw new Error('BLE-failed API returned ' + res.status);
+        const payload = await res.json();
+        renderBleFailedRings(payload);
+    } catch (err) {
+        console.warn('BLE-failed poll error:', err);
+    }
+}
+
+function renderBleFailedRings(payload) {
+    const btn = document.getElementById('ble-failed-btn');
+    const countEl = document.getElementById('ble-failed-btn-count');
+    const subtitle = document.getElementById('ble-failed-subtitle');
+    const tbody = document.getElementById('ble-failed-tbody');
+    const active = (payload && Array.isArray(payload.active)) ? payload.active : [];
+    const summary = (payload && payload.summary) || {};
+    window.bleFailedRecords = active;
+    if (btn) {
+        btn.style.display = active.length ? '' : 'none';
+        btn.dataset.pulse = active.length ? 'true' : 'false';
+    }
+    if (countEl) countEl.textContent = String(active.length);
+    if (subtitle) subtitle.textContent =
+        (summary.machines_affected || 0) + ' machines affected · ' +
+        (summary.total_failures || 0) + ' cumulative BLE failures';
+    if (!tbody) return;
+    tbody.innerHTML = active.length ? active.map(r => {
+        const failChip = r.fail_count ? '<span class="ble-fail-chip">' + escapeHtml(String(r.fail_count)) + 'x</span>' : '--';
+        return '<tr>' +
+            '<td class="mono">' + escapeHtml(r.machine || '--') + '</td>' +
+            '<td>' + escapeHtml(r.slot != null ? String(r.slot) : '--') + '</td>' +
+            '<td class="mono">' + escapeHtml(r.serial_number || '--') + '</td>' +
+            '<td class="mono">' + escapeHtml(r.ring_mac || '--') + '</td>' +
+            '<td class="mono">' + escapeHtml(r.ring_name || '--') + '</td>' +
+            '<td>' + failChip + '</td>' +
+            '<td>' + _fmtTime(r.first_seen) + '</td>' +
+            '<td>' + _fmtTime(r.last_seen) + '</td>' +
+            '</tr>';
+    }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px 0;">No BLE failed rings</td></tr>';
+}
+
+function openBleFailedModal() {
+    const m = document.getElementById('ble-failed-modal');
+    if (!m) return;
+    m.style.display = 'flex';
+}
+
+function closeBleFailedModal() {
+    const m = document.getElementById('ble-failed-modal');
+    if (m) m.style.display = 'none';
 }
 
 function buildMachineSelector(names) {
@@ -5003,7 +5118,9 @@ function init() {
         let cls = hm.cls;
         const sn = (hm.raw.serial_number || '').toString().trim();
         if (dupSerials.has(sn)) cls += ' slot-dup';
+        if (isBleFailedSlot(hm.raw)) cls += ' slot-ble-failed';
         const badgeHtml = slotBadgeHtml(sn);
+        const bleChipHtml = bleCellChipHtml(hm.raw);
         if (isRefresh && idx < existingCells.length) {
             const el = existingCells[idx];
             el.className = `slot-cell ${cls}`;
@@ -5011,7 +5128,7 @@ function init() {
             el.dataset.cls = hm.cls;
             el.dataset.fw = hm.fw;
             el.dataset.wc = hm.completed.length;
-            el.innerHTML = hm.id + badgeHtml;
+            el.innerHTML = hm.id + badgeHtml + bleChipHtml;
         } else {
             let el = document.createElement('div');
             el.className = `slot-cell ${cls}`;
@@ -5019,7 +5136,7 @@ function init() {
             el.dataset.cls = hm.cls;
             el.dataset.fw = hm.fw;
             el.dataset.wc = hm.completed.length;
-            el.innerHTML = hm.id + badgeHtml;
+            el.innerHTML = hm.id + badgeHtml + bleChipHtml;
             hmGrid.appendChild(el);
         }
     });
@@ -5857,7 +5974,10 @@ function exportFleetSummary() {
                 var ringEntry = ringsData.find(function(rd) {
                     return rd.file === machine && rd.slot === slotId;
                 });
-                if (ringEntry) {
+                if (getBleFailedCount(s) != null || (ringEntry && getBleFailedCount(ringEntry) != null)) {
+                    r.cls = 'slot-danger';
+                    r.status = 'BLE FAILED';
+                } else if (ringEntry) {
                     var rs = (ringEntry.state || '').toUpperCase();
                     if (rs === 'PASSED' || rs === 'PASS') {
                         r.cls = 'slot-pass';
@@ -8720,6 +8840,10 @@ document.addEventListener('keydown', (e) => {
         const overlay = document.getElementById('command-palette-overlay');
         if (overlay && overlay.classList.contains('visible')) {
             toggleCommandPalette();
+        }
+        const bleModal = document.getElementById('ble-failed-modal');
+        if (bleModal && bleModal.style.display !== 'none') {
+            closeBleFailedModal();
         }
     }
     

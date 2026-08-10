@@ -544,6 +544,11 @@
         </div>
 
         <div class="ops-command-right">
+            <button class="ble-failed-btn" id="ble-failed-btn" onclick="openBleFailedModal()" title="View BLE failed rings" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+                <span>BLE FAILED</span>
+                <span class="ble-failed-btn-count" id="ble-failed-btn-count">0</span>
+            </button>
             <input class="sn-modal-input" id="rings-search" type="text" placeholder="SEARCH SERIAL / MAC / RING..." autocomplete="off" oninput="ringsFilterGrid()" style="flex:0 1 260px;">
             <button class="export-btn" onclick="ringsExportCSV()" title="Export filtered ring slots data as CSV" style="border-color:var(--border);gap:6px;padding:5px 12px;">
                 <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1143,6 +1148,41 @@
         </div>
         <div class="sku-overlay-footer">
             <button type="button" class="sku-back-btn" onclick="dvBackToChart()">&larr; Back to Chart</button>
+        </div>
+    </div>
+</div>
+
+<!-- BLE Failed Rings Modal -->
+<div id="ble-failed-modal" class="ble-modal-overlay" style="display:none;" onclick="if(event.target===this) closeBleFailedModal()">
+    <div class="ble-modal-box" role="dialog" aria-modal="true" aria-labelledby="ble-failed-modal-title" onclick="event.stopPropagation()">
+        <div class="ble-modal-header">
+            <div class="ble-modal-heading">
+                <div class="ble-modal-title" id="ble-failed-modal-title">
+                    <span class="ble-modal-warn-ico">&#9888;</span>
+                    BLE FAILED RINGS
+                </div>
+                <div class="ble-modal-subtitle" id="ble-failed-subtitle"></div>
+            </div>
+            <button type="button" class="ble-modal-close" title="Close" aria-label="Close" onclick="closeBleFailedModal()">&times;</button>
+        </div>
+        <div class="ble-modal-body">
+            <div class="ble-modal-scroll">
+                <table class="drilldown-table">
+                    <thead>
+                        <tr>
+                            <th>Machine</th>
+                            <th>Slot</th>
+                            <th>Serial</th>
+                            <th>Ring MAC</th>
+                            <th>Ring Name</th>
+                            <th>Fail Count</th>
+                            <th>First Seen</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ble-failed-tbody"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

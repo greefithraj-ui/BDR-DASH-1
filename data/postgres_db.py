@@ -1,9 +1,10 @@
 import json
 import os
+import re
 import threading
 import traceback
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 PG_CONFIG = {
@@ -186,6 +187,37 @@ def init_live_tables(conn):
         """)
 
 
+BLE_FAILED_DDL = """
+CREATE TABLE IF NOT EXISTS ble_failed_rings (
+    id SERIAL PRIMARY KEY,
+    serial_number TEXT NOT NULL,
+    machine TEXT NOT NULL,
+    slot INTEGER,
+    ring_mac TEXT,
+    ring_name TEXT,
+    error TEXT,
+    fail_count INTEGER,
+    firmware_version TEXT,
+    hardware_version TEXT,
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    snapshot_at TIMESTAMPTZ,
+    UNIQUE (serial_number, machine)
+);
+CREATE INDEX IF NOT EXISTS idx_ble_failed_active ON ble_failed_rings (is_active);
+CREATE INDEX IF NOT EXISTS idx_ble_failed_machine ON ble_failed_rings (machine);
+CREATE INDEX IF NOT EXISTS idx_ble_failed_last_seen ON ble_failed_rings (last_seen);
+"""
+
+
+def init_ble_failed_rings_table(conn):
+    """Create the ble_failed_rings table and indexes if they don't exist."""
+    with conn.cursor() as cur:
+        cur.execute(BLE_FAILED_DDL)
+
+
 def init_logs_table(conn):
     """Create machine_logs table if it doesn't exist."""
     with conn.cursor() as cur:
@@ -228,6 +260,7 @@ def init_db():
             add_dashboard_indexes(conn)
             init_logs_table(conn)
             init_archive_table(conn)
+            init_ble_failed_rings_table(conn)
             try:
                 from ring_status import init_ring_status_table
                 init_ring_status_table(conn)
@@ -471,6 +504,10 @@ def import_rings_json_to_pg(machine_name, json_path):
                     content = EXCLUDED.content,
                     downloaded_at = NOW()
             """, (machine_name, raw_content))
+        try:
+            update_ble_failed_from_file(pg_conn, machine_name, data)
+        except Exception as e:
+            print(f"[postgres_db] ble_failed update failed for {machine_name}: {e}")
         pg_conn.commit()
     except Exception as e:
         if pg_conn:
@@ -478,6 +515,168 @@ def import_rings_json_to_pg(machine_name, json_path):
     finally:
         if pg_conn:
             pg_conn.close()
+
+
+# ── BLE Failed Rings ────────────────────────────────────────────────
+
+_BLE_FAILED_ERROR_RE = re.compile(r"BLE failed\s+(\d+)x", re.IGNORECASE)
+
+
+def _extract_ble_failed(machine, slots):
+    """Return BLE-failed record dicts for slots whose error matches 'BLE failed Nx'."""
+    out = []
+    for slot_num, s in slots.items():
+        if not isinstance(s, dict):
+            continue
+        err = s.get("error")
+        if not isinstance(err, str):
+            continue
+        m = _BLE_FAILED_ERROR_RE.search(err)
+        if not m:
+            continue
+        sn = (s.get("serial_number") or "").strip()
+        if not sn or sn in ("--", "N/A"):
+            continue
+        out.append({
+            "serial_number": sn,
+            "machine": machine,
+            "slot": int(slot_num) if str(slot_num).isdigit() else None,
+            "ring_mac": s.get("ring_mac"),
+            "ring_name": s.get("ring_name"),
+            "error": err,
+            "fail_count": int(m.group(1)),
+            "firmware_version": s.get("firmware_version"),
+            "hardware_version": s.get("hardware_version"),
+            "snapshot_at": datetime.now(timezone.utc),
+        })
+    return out
+
+
+def _occupied_serials(slots):
+    """Set of non-empty serial numbers present in a machine's rings file."""
+    seen = set()
+    for s in slots.values():
+        if not isinstance(s, dict):
+            continue
+        sn = (s.get("serial_number") or "").strip()
+        if sn and sn not in ("--", "N/A"):
+            seen.add(sn)
+    return seen
+
+
+def update_ble_failed_from_file(conn, machine_name, slots):
+    """Upsert active BLE-failed ring records for one machine, then resolve any
+    previously-active records whose serial is no longer BLE-failed (cleared,
+    replaced, or removed from the file). Returns the number of active records."""
+    if not isinstance(slots, dict) or not slots:
+        return 0
+    with conn.cursor() as cur:
+        for rec in _extract_ble_failed(machine_name, slots):
+            cur.execute("""
+                INSERT INTO ble_failed_rings (
+                    serial_number, machine, slot, ring_mac, ring_name, error,
+                    fail_count, firmware_version, hardware_version,
+                    first_seen, last_seen, resolved_at, is_active, snapshot_at
+                ) VALUES (
+                    %(serial_number)s, %(machine)s, %(slot)s, %(ring_mac)s, %(ring_name)s, %(error)s,
+                    %(fail_count)s, %(firmware_version)s, %(hardware_version)s,
+                    NOW(), NOW(), NULL, TRUE, %(snapshot_at)s
+                )
+                ON CONFLICT (serial_number, machine) DO UPDATE SET
+                    slot             = EXCLUDED.slot,
+                    ring_mac         = EXCLUDED.ring_mac,
+                    ring_name        = EXCLUDED.ring_name,
+                    error            = EXCLUDED.error,
+                    fail_count       = EXCLUDED.fail_count,
+                    firmware_version = EXCLUDED.firmware_version,
+                    hardware_version = EXCLUDED.hardware_version,
+                    last_seen        = NOW(),
+                    resolved_at      = NULL,
+                    is_active        = TRUE,
+                    snapshot_at      = EXCLUDED.snapshot_at
+                WHERE ble_failed_rings.is_active = FALSE
+                   OR ble_failed_rings.last_seen < EXCLUDED.snapshot_at
+            """, rec)
+
+        active = [r["serial_number"] for r in _extract_ble_failed(machine_name, slots)]
+        if active:
+            cur.execute("""
+                UPDATE ble_failed_rings
+                SET resolved_at = NOW(), is_active = FALSE
+                WHERE machine = %s AND is_active = TRUE
+                  AND serial_number NOT IN %s
+            """, (machine_name, tuple(active)))
+        else:
+            cur.execute("""
+                UPDATE ble_failed_rings
+                SET resolved_at = NOW(), is_active = FALSE
+                WHERE machine = %s AND is_active = TRUE
+            """, (machine_name,))
+
+        cur.execute("SELECT COUNT(*) FROM ble_failed_rings WHERE machine = %s AND is_active = TRUE", (machine_name,))
+        return cur.fetchone()[0]
+
+
+def get_ble_failed_rings():
+    """Return all currently-active BLE-failed ring records, newest first."""
+    conn = get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, serial_number, machine, slot, ring_mac, ring_name, error,
+                       fail_count, firmware_version, hardware_version,
+                       first_seen, last_seen, resolved_at, is_active
+                FROM ble_failed_rings
+                WHERE is_active = TRUE
+                ORDER BY last_seen DESC, machine, slot
+            """)
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+
+def get_ble_failed_history(limit=50):
+    """Return recent BLE-failed records (active + resolved), newest first."""
+    conn = get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, serial_number, machine, slot, ring_mac, ring_name, error,
+                       fail_count, firmware_version, hardware_version,
+                       first_seen, last_seen, resolved_at, is_active
+                FROM ble_failed_rings
+                ORDER BY last_seen DESC
+                LIMIT %s
+            """, (int(limit),))
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+
+def get_ble_failed_fallback():
+    """Derive the current BLE-failed rings from files when PG is unavailable.
+    Returns {active: [...], history: []} using live ring JSON files."""
+    active = []
+    rings = get_live_rings_fallback()
+    for machine, slots in rings.items():
+        for rec in _extract_ble_failed(machine, slots):
+            active.append({
+                "serial_number": rec["serial_number"],
+                "machine": rec["machine"],
+                "slot": rec["slot"],
+                "ring_mac": rec["ring_mac"],
+                "ring_name": rec["ring_name"],
+                "error": rec["error"],
+                "fail_count": rec["fail_count"],
+                "firmware_version": rec["firmware_version"],
+                "hardware_version": rec["hardware_version"],
+                "first_seen": None,
+                "last_seen": None,
+                "resolved_at": None,
+                "is_active": True,
+            })
+    active.sort(key=lambda r: (r["machine"], r["slot"]))
+    return {"active": active, "history": []}
 
 
 def _has_any_occupied_slots(data):
@@ -601,6 +800,10 @@ def sync_machines_from_files():
                                 content = EXCLUDED.content,
                                 downloaded_at = NOW()
                         """, (name, raw))
+                        try:
+                            update_ble_failed_from_file(pg_conn, name, data)
+                        except Exception as e:
+                            print(f"[postgres_db] ble_failed update failed for {name}: {e}")
                         rings_count += 1
                     else:
                         cur.execute("DELETE FROM live_rings_raw WHERE machine_name = %s", (name,))
