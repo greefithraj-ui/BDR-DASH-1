@@ -1041,23 +1041,33 @@ function ringsExportCSV() {
   if (ringsStatusFilter && !ringsKpiFilter) filtered = filtered.filter(d => (d.state || '').toUpperCase() === ringsStatusFilter);
   if (ringsSelectedMachine) filtered = filtered.filter(d => d.file === ringsSelectedMachine);
   if (filtered.length === 0) { alert('No data matches current filters.'); return; }
-  const rows = [['Date','Time','Machine','Slot','Serial Number','SKU','Category','Battery %','MAC ID','Avg BDR','Status']];
+  const rows = [['Date','Time','Machine','Slot','Serial Number','SKU','Category','Battery %','MAC ID','Firmware','Avg BDR','Total Run Time','Status']];
   filtered.forEach(d => {
     let batt = '';
     let avgBdr = '0.00';
+    let runTime = '--';
     const md = ALL_MACHINE_DATA && ALL_MACHINE_DATA[d.file];
     let s = null;
     if (md && md.slots) {
       s = md.slots[d.slot] || null;
       if (s && s.battery_current != null) batt = s.battery_current;
       if (s) avgBdr = getSlotAvgBdr(s, calculateCompletedCycleWorkouts(s)).toFixed(2);
+      const hist = (s && s.bdr_battery_history) || [];
+      if (hist.length >= 2) {
+        const startTs = new Date(hist[0][0]);
+        const endTs = new Date(hist[hist.length - 1][0]);
+        const hours = (endTs - startTs) / 3600000;
+        if (!isNaN(hours) && hours >= 0) {
+          runTime = hours >= 24 ? (hours / 24).toFixed(2) + ' Days' : hours.toFixed(2) + ' Hours';
+        }
+      }
     }
     const cls = classifySerial(d.serial_number) || {};
     const t = ringAssignedTimestamp(d);
     const date = t ? t.getFullYear() + '-' + pad2(t.getMonth() + 1) + '-' + pad2(t.getDate()) : '';
     const time = t ? pad2(t.getHours()) + ':' + pad2(t.getMinutes()) + ':' + pad2(t.getSeconds()) : '';
     const status = (isBleFailedSlot(d) || (s && isBleFailedSlot(s))) ? 'BLE FAILED' : (d.state || '');
-    rows.push([date, time, d.file, d.slot, d.serial_number, cls.sku || '', cls.category || '', batt, d.ring_mac, avgBdr, status]);
+    rows.push([date, time, d.file, d.slot, d.serial_number, cls.sku || '', cls.category || '', batt, d.ring_mac, d.firmware_version || '--', avgBdr, runTime, status]);
   });
   const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -1129,9 +1139,13 @@ const DV_CATEGORIES = [
   { name: 'PRO',           color: '#6366F1', cardClass: 'pro-card' },
   { name: 'DIESEL',        color: '#10B981', cardClass: 'diesel-card' },
   { name: 'RT CONVERSION', color: '#F59E0B', cardClass: 'rt-conversion-card' },
+  { name: 'PRO RT CONVERSION', color: '#FB7185', cardClass: 'pro-rt-conversion-card' },
   { name: 'WABI SABI',     color: '#8B5CF6', cardClass: 'wabi-sabi-card' },
   { name: 'LUX',           color: '#EAB308', cardClass: 'lux-card' },
-  { name: 'RTO',           color: '#EC4899', cardClass: 'rto-card' }
+  { name: 'RTO',           color: '#EC4899', cardClass: 'rto-card' },
+  { name: 'CHINA',                color: '#EF4444', cardClass: 'china-card' },
+  { name: 'WABI SABI CHINA',      color: '#A78BFA', cardClass: 'wabi-sabi-china-card' },
+  { name: 'RT CONVERSION CHINA',  color: '#F97316', cardClass: 'rt-conversion-china-card' }
 ];
 
 function dvCategoryColor(catName) {
@@ -1150,12 +1164,21 @@ function classifySerial(serial) {
   const modelCode = (parts[4] || '').toUpperCase();
   if (RTO_SERIAL_SET.has(upperSn)) return { category: 'RTO', sku: modelCode || '--' };
 
+  const prefix = (parts[0] || '').toUpperCase();
+  const channelVariant = (parts[1] || '').toUpperCase();
+  if (prefix === 'RA' && channelVariant.startsWith('CP')) {
+    if (['CW1', 'CW2', 'CW3'].includes(catCode)) return { category: 'WABI SABI CHINA', sku: modelCode || '--' };
+    if (['IR2', 'IR3', 'IR4'].includes(catCode)) return { category: 'RT CONVERSION CHINA', sku: modelCode || '--' };
+    return { category: 'CHINA', sku: modelCode || '--' };
+  }
+
   if (['IW1', 'IW2', 'IW3'].includes(catCode)) return { category: 'WABI SABI', sku: modelCode || '--' };
   if (['IR2', 'IR3', 'IR4'].includes(catCode)) return { category: 'RT CONVERSION', sku: modelCode || '--' };
+  if (prefix === 'RP' && channelVariant.startsWith('CC')) return { category: 'PRO RT CONVERSION', sku: modelCode || '--' };
   if (modelCode.startsWith('L')) return { category: 'LUX', sku: modelCode };
   if (modelCode.charAt(0) === 'D') return { category: 'DIESEL', sku: modelCode };
-  if ((parts[0] || '').toUpperCase() === 'RA') return { category: 'AIR', sku: modelCode || '--' };
-  if ((parts[0] || '').toUpperCase() === 'RP') return { category: 'PRO', sku: modelCode || '--' };
+  if (prefix === 'RA') return { category: 'AIR', sku: modelCode || '--' };
+  if (prefix === 'RP') return { category: 'PRO', sku: modelCode || '--' };
   return null;
 }
 
@@ -1180,7 +1203,11 @@ const SLOT_BADGE_DEFS = {
   'LUX':           { key: 'lux',          label: 'LUX' },
   'WABI SABI':     { key: 'wabisabi',     label: 'WS' },
   'RT CONVERSION': { key: 'rtconversion', label: 'RTC' },
-  'RTO':           { key: 'rto',          label: 'RTO' }
+  'PRO RT CONVERSION': { key: 'prortconversion', label: 'PRTC' },
+  'RTO':           { key: 'rto',          label: 'RTO' },
+  'CHINA':                { key: 'china',              label: 'CHN' },
+  'WABI SABI CHINA':      { key: 'wabisabichina',      label: 'WS-CHN' },
+  'RT CONVERSION CHINA':  { key: 'rtconversionchina',  label: 'RTC-CHN' }
 };
 
 function slotBadgeHtml(serial) {
@@ -5519,6 +5546,8 @@ function init() {
         let totalWorkouts = completed.length;
         
         document.getElementById('dt-workouts').innerText = totalWorkouts;
+        let timeRemainingEl = document.getElementById('dt-time-remaining');
+        if (timeRemainingEl) timeRemainingEl.innerText = '--';
         
         let cycTb = document.getElementById('dt-cycles');
 
@@ -5555,6 +5584,13 @@ function init() {
                 let endT = lc[lc.length-1][0];
                 activeWkRange = { startT, endT };
                 let dur = Math.round((new Date(endT) - new Date(startT)) / 60000);
+                
+                let timeRemainingEl2 = document.getElementById('dt-time-remaining');
+                if (phs === 'DISCHARGING' && timeRemainingEl2) {
+                    let remaining = Math.max(0, 120 - dur);
+                    timeRemainingEl2.innerText = remaining + 'm left';
+                }
+
                 let liveBDR = (diff / 2).toFixed(2);
                 let stat = hm.isSlantingLeak ? 'LEAK' : (hm.topIssue ? hm.topIssue.title : (phs === 'DISCHARGING' ? 'DISC.' : 'OK'));
                 
@@ -6804,22 +6840,31 @@ function applyRtoConfig(cfg) {
     if (currentView === 'rings') loadRingsFromAPI();
 }
 
+function rtoStatusText(cfg) {
+    if (!cfg || !cfg.ok) return 'Not configured.';
+    let txt = 'RTO configured: ' + cfg.count + ' serial(s) from ' + (cfg.sheet || 'default sheet') + ' (updated ' + (cfg.updated_at || '--') + ')';
+    if (cfg.auto_sync) txt += ' • Auto Sync: every 30 min';
+    if (cfg.last_sync_status === 'error' && cfg.last_sync_error) txt += ' • Last sync failed: ' + cfg.last_sync_error;
+    return txt;
+}
+
+function updateRtoSettingsUI(cfg) {
+    const st = document.getElementById('rto-settings-status');
+    if (st) {
+        st.textContent = rtoStatusText(cfg);
+        st.style.color = (cfg && cfg.ok) ? 'var(--ok)' : 'var(--muted)';
+    }
+    const toggle = document.getElementById('rto-auto-sync-toggle');
+    if (toggle) toggle.checked = !!(cfg && cfg.auto_sync);
+}
+
 async function loadRtoConfig() {
     try {
         const res = await fetch('/api/settings/rto', { cache: 'no-store' });
         if (!res.ok) return;
         const cfg = await res.json();
         applyRtoConfig(cfg);
-        const st = document.getElementById('rto-settings-status');
-        if (st) {
-            if (cfg.ok) {
-                st.textContent = 'RTO configured: ' + cfg.count + ' serial(s) from ' + (cfg.sheet || 'default sheet') + ' (updated ' + (cfg.updated_at || '--') + ')';
-                st.style.color = 'var(--ok)';
-            } else {
-                st.textContent = 'Not configured.';
-                st.style.color = 'var(--muted)';
-            }
-        }
+        updateRtoSettingsUI(cfg);
     } catch (e) {
         console.error('Failed to load RTO config', e);
     }
@@ -6831,16 +6876,7 @@ function openSettings() {
     document.getElementById('rto-sheet-url').value = RTO_CONFIG.url || '';
     document.getElementById('rto-sheet-name').value = RTO_CONFIG.sheet || '';
     document.getElementById('rto-sheet-column').value = RTO_CONFIG.column || '';
-    const st = document.getElementById('rto-settings-status');
-    if (st) {
-        if (RTO_CONFIG.ok) {
-            st.textContent = 'RTO configured: ' + RTO_CONFIG.count + ' serial(s) from ' + (RTO_CONFIG.sheet || 'default sheet') + ' (updated ' + (RTO_CONFIG.updated_at || '--') + ')';
-            st.style.color = 'var(--ok)';
-        } else {
-            st.textContent = 'Not configured.';
-            st.style.color = 'var(--muted)';
-        }
-    }
+    updateRtoSettingsUI(RTO_CONFIG);
     overlay.classList.add('visible');
 }
 
@@ -6853,6 +6889,7 @@ async function saveRtoSettings() {
     const url = document.getElementById('rto-sheet-url').value.trim();
     const sheet = document.getElementById('rto-sheet-name').value.trim();
     const column = document.getElementById('rto-sheet-column').value.trim();
+    const autoSync = document.getElementById('rto-auto-sync-toggle')?.checked || false;
     const st = document.getElementById('rto-settings-status');
     const btn = document.getElementById('rto-save-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Syncing...'; }
@@ -6860,7 +6897,7 @@ async function saveRtoSettings() {
         const res = await fetch('/api/settings/rto', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, sheet, column })
+            body: JSON.stringify({ url, sheet, column, auto_sync: autoSync })
         });
         const cfg = await res.json();
         if (!res.ok || !cfg.ok) {
@@ -6869,13 +6906,74 @@ async function saveRtoSettings() {
             return;
         }
         applyRtoConfig(cfg);
-        st.textContent = 'Saved. ' + cfg.count + ' serial(s) loaded from ' + (cfg.sheet || 'default sheet') + ' (updated ' + (cfg.updated_at || '--') + ')';
+        updateRtoSettingsUI(cfg);
+        st.textContent = 'Saved. ' + rtoStatusText(cfg);
         st.style.color = 'var(--ok)';
     } catch (e) {
         st.textContent = 'Network error while saving RTO config.';
         st.style.color = '#F87171';
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Save & Sync'; }
+    }
+}
+
+async function toggleRtoAutoSync(enabled) {
+    const st = document.getElementById('rto-settings-status');
+    try {
+        const res = await fetch('/api/settings/rto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ auto_sync: !!enabled })
+        });
+        const cfg = await res.json();
+        if (!res.ok) {
+            if (st) { st.textContent = cfg.error || 'Failed to update Auto Sync.'; st.style.color = '#F87171'; }
+            const toggle = document.getElementById('rto-auto-sync-toggle');
+            if (toggle) toggle.checked = !enabled;
+            return;
+        }
+        applyRtoConfig(cfg);
+        updateRtoSettingsUI(cfg);
+        if (st) {
+            st.textContent = enabled
+                ? 'Auto Sync enabled — the Google Sheet will sync automatically every 30 minutes.'
+                : 'Auto Sync disabled.';
+            st.style.color = enabled ? 'var(--ok)' : 'var(--muted)';
+        }
+    } catch (e) {
+        if (st) { st.textContent = 'Network error while updating Auto Sync.'; st.style.color = '#F87171'; }
+        const toggle = document.getElementById('rto-auto-sync-toggle');
+        if (toggle) toggle.checked = !enabled;
+    }
+}
+
+async function syncRtoNow() {
+    const st = document.getElementById('rto-settings-status');
+    const btn = document.getElementById('rto-sync-now-btn');
+    if (!RTO_CONFIG.url || !RTO_CONFIG.column) {
+        if (st) { st.textContent = 'Not configured. Enter the Google Sheet URL and Column, then Save & Sync first.'; st.style.color = '#F87171'; }
+        return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Syncing...'; }
+    if (st) { st.textContent = 'Syncing from Google Sheet...'; st.style.color = 'var(--muted)'; }
+    try {
+        const res = await fetch('/api/settings/rto/sync', { method: 'POST' });
+        const cfg = await res.json();
+        if (!res.ok || !cfg.ok) {
+            applyRtoConfig({ ...RTO_CONFIG, last_sync_status: 'error', last_sync_error: cfg.error || 'Sync failed' });
+            if (st) { st.textContent = cfg.error || 'Manual sync failed.'; st.style.color = '#F87171'; }
+            return;
+        }
+        applyRtoConfig(cfg);
+        updateRtoSettingsUI(cfg);
+        if (st) {
+            st.textContent = 'Synced. ' + cfg.count + ' serial(s) loaded from ' + (cfg.sheet || 'default sheet') + ' (updated ' + (cfg.updated_at || '--') + ')';
+            st.style.color = 'var(--ok)';
+        }
+    } catch (e) {
+        if (st) { st.textContent = 'Network error while syncing RTO config.'; st.style.color = '#F87171'; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Sync Now'; }
     }
 }
 
@@ -8988,4 +9086,4 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
-
+

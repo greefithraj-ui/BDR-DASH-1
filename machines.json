@@ -44,8 +44,7 @@
     {
       "name": "aqc-05",
       "user": "aqc-05",
-      "ip": "172.16.18.42",
-      "removed_slots": [1, 23, 60]
+      "ip": "172.16.18.42"
     },
     {
       "name": "aqc-06",
@@ -236,6 +235,11 @@
       "name": "aqc-53",
       "user": "aqc-53",
       "ip": "172.16.18.132"
+    },
+    {
+      "name": "aqc-29",
+      "user": "aqc-29",
+      "ip": "172.16.18.229"
     }
   ],
   "destination_bdr": "D:\\BDR\\DESTINATION",

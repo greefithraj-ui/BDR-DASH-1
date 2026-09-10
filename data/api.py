@@ -255,6 +255,11 @@ def startup_event():
     ring_prune_thread.start()
     print("[api] Started background ring_status pruning thread (30-day retention)")
 
+    # Background: auto-sync RTO Google Sheet every 30 minutes
+    rto_sync_thread = threading.Thread(target=_rto_auto_sync_background, daemon=True)
+    rto_sync_thread.start()
+    print(f"[api] Started background RTO sheet auto-sync thread (every {RTO_AUTO_SYNC_INTERVAL // 60} min).")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -466,8 +471,14 @@ def get_machine_charger_status(machine: str):
     for slot_key, slot_data in raw_slots.items():
         if not isinstance(slot_data, dict):
             continue
-        charger_on = slot_data.get("charger_on")
+        raw_charger_on = slot_data.get("charger_on")
         current_ma = slot_data.get("charging_current_ma")
+        if isinstance(raw_charger_on, str):
+            charger_on = raw_charger_on.strip().lower() in ("1", "true", "yes", "on")
+        elif isinstance(raw_charger_on, (int, float)) and not isinstance(raw_charger_on, bool):
+            charger_on = bool(raw_charger_on)
+        else:
+            charger_on = raw_charger_on
         if charger_on is not None:
             state = "on" if bool(charger_on) else "off"
             source = "charger_on"
@@ -871,6 +882,7 @@ def get_rings_machine(machine: str):
 
 RTO_CONFIG_LOCK = threading.Lock()
 RTO_CONFIG_PATH = Path(__file__).resolve().parent.parent / "rto_config.json"
+RTO_AUTO_SYNC_INTERVAL = 1800  # 30 minutes
 
 
 def _load_rto_config():
@@ -882,6 +894,10 @@ def _load_rto_config():
         "serials": [],
         "count": 0,
         "updated_at": None,
+        "auto_sync": False,
+        "last_sync_at": None,
+        "last_sync_status": None,
+        "last_sync_error": None,
     }
     try:
         if RTO_CONFIG_PATH.exists():
@@ -1047,6 +1063,71 @@ def get_rto_settings():
     return CompactJSONResponse(content=cfg)
 
 
+def _rto_sync_now():
+    """Re-fetch serials from the saved Google Sheet config. Returns (ok, cfg_or_error)."""
+    with RTO_CONFIG_LOCK:
+        cfg = _load_rto_config()
+    url = str(cfg.get("url") or "").strip()
+    sheet = str(cfg.get("sheet") or "").strip()
+    column = str(cfg.get("column") or "").strip()
+    if not url or not column:
+        return False, {"ok": False, "error": "RTO is not configured. Save a Google Sheet URL and Column first."}
+    try:
+        serials = _fetch_serials_for_config(url, sheet, column)
+    except ValueError as e:
+        err = str(e)
+    except Exception as e:
+        err = "Failed to fetch Google Sheet: %s" % e
+    else:
+        new_cfg = {
+            "ok": True,
+            "url": url,
+            "sheet": sheet,
+            "column": column,
+            "serials": serials,
+            "count": len(serials),
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "auto_sync": bool(cfg.get("auto_sync")),
+            "last_sync_at": datetime.now().isoformat(timespec="seconds"),
+            "last_sync_status": "ok",
+            "last_sync_error": None,
+        }
+        with RTO_CONFIG_LOCK:
+            _save_rto_config(new_cfg)
+        print("[api] RTO sheet synced: %d serial(s)" % len(serials))
+        return True, new_cfg
+    with RTO_CONFIG_LOCK:
+        prev = _load_rto_config()
+        prev["last_sync_at"] = datetime.now().isoformat(timespec="seconds")
+        prev["last_sync_status"] = "error"
+        prev["last_sync_error"] = err
+        _save_rto_config(prev)
+    print("[api] RTO sheet sync failed: %s" % err)
+    return False, {"ok": False, "error": err}
+
+
+def _rto_auto_sync_background():
+    """Auto-sync the RTO Google Sheet every 30 minutes when enabled."""
+    while True:
+        try:
+            time.sleep(RTO_AUTO_SYNC_INTERVAL)
+            with RTO_CONFIG_LOCK:
+                cfg = _load_rto_config()
+            if not cfg.get("auto_sync"):
+                continue
+            if not str(cfg.get("url") or "").strip() or not str(cfg.get("column") or "").strip():
+                continue
+            _rto_sync_now()
+        except Exception as e:
+            print(f"[api] RTO auto-sync error: {e}")
+
+
+@app.post("/api/settings/rto/sync")
+def sync_rto_settings():
+    ok, result = _rto_sync_now()
+    return CompactJSONResponse(content=result, status_code=200 if ok else 400)
+
+
 @app.post("/api/settings/rto")
 async def set_rto_settings(request: Request):
     try:
@@ -1063,10 +1144,24 @@ async def set_rto_settings(request: Request):
             "serials": [],
             "count": 0,
             "updated_at": None,
+            "auto_sync": False,
+            "last_sync_at": None,
+            "last_sync_status": None,
+            "last_sync_error": None,
         }
         with RTO_CONFIG_LOCK:
             _save_rto_config(cfg)
         return CompactJSONResponse(content={**cfg, "cleared": True})
+
+    # Lightweight toggle: update auto_sync flag without re-fetching the sheet
+    if "auto_sync" in payload and not payload.get("url") and not payload.get("column"):
+        with RTO_CONFIG_LOCK:
+            cfg = _load_rto_config()
+        cfg["auto_sync"] = bool(payload.get("auto_sync"))
+        with RTO_CONFIG_LOCK:
+            _save_rto_config(cfg)
+        print("[api] RTO auto-sync %s" % ("enabled" if cfg["auto_sync"] else "disabled"))
+        return CompactJSONResponse(content=cfg)
 
     url = str(payload.get("url") or "").strip()
     sheet = str(payload.get("sheet") or "").strip()
@@ -1087,6 +1182,9 @@ async def set_rto_settings(request: Request):
             status_code=502,
         )
 
+    with RTO_CONFIG_LOCK:
+        prev = _load_rto_config()
+    auto_sync = bool(payload.get("auto_sync", prev.get("auto_sync", False)))
     cfg = {
         "ok": True,
         "url": url,
@@ -1095,6 +1193,10 @@ async def set_rto_settings(request: Request):
         "serials": serials,
         "count": len(serials),
         "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "auto_sync": auto_sync,
+        "last_sync_at": datetime.now().isoformat(timespec="seconds"),
+        "last_sync_status": "ok",
+        "last_sync_error": None,
     }
     with RTO_CONFIG_LOCK:
         _save_rto_config(cfg)

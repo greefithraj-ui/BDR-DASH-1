@@ -149,6 +149,9 @@
                     <button data-cat="RT CONVERSION" onclick="setSerialBrowserCategory('RT CONVERSION')">RT Conversion</button>
                     <button data-cat="LUX" onclick="setSerialBrowserCategory('LUX')">LUX</button>
                     <button data-cat="RTO" onclick="setSerialBrowserCategory('RTO')">RTO</button>
+                    <button data-cat="CHINA" onclick="setSerialBrowserCategory('CHINA')">China</button>
+                    <button data-cat="WABI SABI CHINA" onclick="setSerialBrowserCategory('WABI SABI CHINA')">Wabi Sabi China</button>
+                    <button data-cat="RT CONVERSION CHINA" onclick="setSerialBrowserCategory('RT CONVERSION CHINA')">RT Conversion China</button>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:400px;">
                     <button class="sn-bulk-toggle" id="sn-bulk-toggle" onclick="toggleSerialBrowserBulk()" title="Toggle bulk search mode">
@@ -197,10 +200,20 @@
                     <label for="rto-sheet-column">Column Name</label>
                     <input class="sn-modal-input" id="rto-sheet-column" type="text" placeholder="e.g. Serial Number or A"/>
                 </div>
+                <label class="sn-settings-autosync" for="rto-auto-sync-toggle">
+                    <input type="checkbox" id="rto-auto-sync-toggle" onchange="toggleRtoAutoSync(this.checked)"/>
+                    <span class="sn-settings-autosync-text">
+                        <b>Auto Sync</b>
+                        <span>Automatically save &amp; sync from the Google Sheet every 30 minutes</span>
+                    </span>
+                </label>
                 <div class="sn-settings-status" id="rto-settings-status">Not configured.</div>
                 <div class="sn-settings-actions">
                     <button class="toggle-btn active" id="rto-save-btn" onclick="saveRtoSettings()" style="border-color:var(--accent,#38BDF8);color:var(--accent,#38BDF8);">
                         Save &amp; Sync
+                    </button>
+                    <button class="toggle-btn" id="rto-sync-now-btn" onclick="syncRtoNow()" style="border-color:var(--ok,#34D399);color:var(--ok,#34D399);" title="Re-fetch serials from the saved Google Sheet">
+                        Sync Now
                     </button>
                     <button class="toggle-btn" id="rto-clear-btn" onclick="clearRtoSettings()" style="color:#F87171;">
                         Clear
@@ -455,6 +468,10 @@
                 <div class="detail-stat">
                     <div class="kpi-title">Total Workouts</div>
                     <div class="kpi-val" id="dt-workouts" style="font-size:20px;"></div>
+                </div>
+                <div class="detail-stat">
+                    <div class="kpi-title">TIME REMAINING</div>
+                    <div class="kpi-val" id="dt-time-remaining" style="font-size:20px;">--</div>
                 </div>
                 <div class="detail-stat">
                     <div class="kpi-title">SERIAL NUMBER</div>
@@ -1151,7 +1168,7 @@
     </div>
 </div>
 
-<script defer src="/app.js"></script>
+<script defer src="/app.js?v=20260903"></script>
     <script src="wake-lock.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts" defer crossorigin="anonymous"></script>
 </body>

@@ -300,15 +300,23 @@ def remote_path_for_sftp(client, remote_file):
 # ---------------------------------------------------------------------------
 
 def run_with_timeout(func, timeout, *args, **kwargs):
-    """Run a function with a timeout, raises TimeoutError if it exceeds."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(func, *args, **kwargs)
-        try:
-            return future.result(timeout=timeout)
-        except concurrent.futures.TimeoutError:
-            # Try to cancel the future (best effort)
-            future.cancel()
-            raise TimeoutError(f"Operation timed out after {timeout}s")
+    """Run a function with a timeout, raises TimeoutError if it exceeds.
+
+    Uses shutdown(wait=False) so a background task that never returns (e.g. a
+    stuck SSH/SFTP call that ignores connection timeouts) cannot block the
+    timeout path. Without this, the previous `with`-block semantics would
+    block forever on ThreadPoolExecutor.__exit__ -> shutdown(wait=True), which
+    caused the background data-update loop to freeze after a machine restart.
+    """
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(func, *args, **kwargs)
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        future.cancel()
+        raise TimeoutError(f"Operation timed out after {timeout}s")
+    finally:
+        executor.shutdown(wait=False)
 
 def _categorize_error(exc, remote_path, ip):
     msg = str(exc).lower() if str(exc) else type(exc).__name__.lower()
@@ -583,7 +591,8 @@ def download_all(config, password=AUTH_PASSWORD, show_password_prompt=False, rem
     fail_count = 0
     fail_names = []
     workers = min(16, len(machines))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+    try:
         futures = [executor.submit(download_one, machine, password, str(dest_path), remote_file) for machine in machines]
         done, not_done = concurrent.futures.wait(futures, timeout=45)
         for future in not_done:
@@ -603,6 +612,11 @@ def download_all(config, password=AUTH_PASSWORD, show_password_prompt=False, rem
                 fail_count += 1
                 print_status(f"{completed}/{len(machines)}  machine failed: {exc}", "fail")
         fail_count += len(not_done)
+    finally:
+        # Do NOT wait for stuck worker threads here. A machine whose SSH/SFTP
+        # call ignores timeouts would otherwise freeze shutdown(wait=True) and
+        # stall the entire background data-update cycle. Detach instead.
+        executor.shutdown(wait=False)
     print()
     print(rule())
     if fail_count:
